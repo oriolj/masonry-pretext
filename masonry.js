@@ -488,7 +488,17 @@
     // catch. Pre-populating with getBoundingClientRect (which matches
     // the borderBoxSize the observer delivers) makes every event a
     // legitimate comparison. SSR-safe via the typeof guard.
-    if ( !this.options.static && typeof ResizeObserver !== 'undefined' ) {
+    //
+    // ── #044 / D.4 — dynamicItems opt-out ────────────────────────────
+    // When `static: true + dynamicItems: '.selector'` is set, the
+    // observer IS constructed (overriding `static`) but only items
+    // matching the selector get observed. Lets a v2 SSR page tolerate
+    // one or two iframe / lazy-loading items while keeping the rest
+    // pre-positioned. The selector match happens in `_observeItemElement`
+    // so the same gate applies to construction-time and post-construction
+    // (`appended` / `prepended`) item additions.
+    var hasDynamic = !!this.options.dynamicItems;
+    if ( ( !this.options.static || hasDynamic ) && typeof ResizeObserver !== 'undefined' ) {
       var self2 = this;
       this._resizeLastSizes = new WeakMap();
       var pendingRaf = null;
@@ -556,7 +566,17 @@
   // Pre-populates _resizeLastSizes with getBoundingClientRect (which
   // matches the borderBoxSize the observer delivers) before observing,
   // so the first observer event has a real comparison baseline.
+  //
+  // #044 / D.4 — when `static: true + dynamicItems: '.selector'` is
+  // set, only items matching the selector get observed. Items that
+  // don't match are skipped at this layer so the gate is uniform
+  // across the initial loop and post-construction additions
+  // (appended / prepended / addItems via the proto._itemize override).
   proto._observeItemElement = function( elem ) {
+    if ( this.options.static && this.options.dynamicItems &&
+         elem.matches && !elem.matches( this.options.dynamicItems ) ) {
+      return;
+    }
     var rect = elem.getBoundingClientRect();
     this._resizeLastSizes.set( elem, { width: rect.width, height: rect.height });
     this._resizeObserver.observe( elem );

@@ -162,6 +162,46 @@ export interface MasonryOptions {
   static?: boolean;
 
   /**
+   * **Selectively re-enable per-item ResizeObserver inside `static`
+   * mode** (#044 / D.4). When set together with `static: true`, only
+   * items matching this CSS selector get the per-item ResizeObserver
+   * wired up. All other items skip the observer entirely (the
+   * `static: true` default).
+   *
+   * Lets a server-rendered grid tolerate a small number of dynamic
+   * items (lazy-loading iframes, podcast embeds, weather widgets) while
+   * keeping the rest pre-positioned with zero observer overhead. The
+   * static items get the SSR pipeline benefit (CLS = 0.00 on first
+   * paint) and the dynamic items get the post-load relayout safety net.
+   *
+   * Has no effect when `static` is `false` (the default), since all
+   * items are observed in that mode anyway.
+   *
+   * Example:
+   *
+   * ```html
+   * <div class="masonry-grid">
+   *   <div class="masonry-item">…news card 1…</div>
+   *   <div class="masonry-item">…news card 2…</div>
+   *   <div class="masonry-item dynamic-item">
+   *     <iframe src="https://snapwidget.com/embed/…" />
+   *   </div>
+   *   <div class="masonry-item">…news card 3…</div>
+   * </div>
+   * ```
+   *
+   * ```ts
+   * new Masonry(grid, {
+   *   static: true,
+   *   dynamicItems: '.dynamic-item',
+   * });
+   * ```
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/044-dynamic-items-opt-out.md
+   */
+  dynamicItems?: string;
+
+  /**
    * **Auto-relayout on direct DOM mutations.** When enabled, masonry
    * watches the grid container for child additions/removals via
    * `MutationObserver` and automatically calls `reloadItems()` +

@@ -252,6 +252,35 @@ const cases = [
     ],
   },
   {
+    // dynamicItems opt-out (#044 / D.4) — see test/visual/pages/dynamic-items.html
+    // for the discriminator design. 4 items in a 3-col 180px container,
+    // all 60×30 initially. Item 0 has the .dynamic-item class. With
+    // `static: true + dynamicItems: '.dynamic-item'`, only item 0
+    // gets the per-item ResizeObserver. After construction, items[0]
+    // and items[1] are both resized 30→60. Item 0's observer fires
+    // → relayout → reads ALL current sizes → repositions everything.
+    //
+    // Expected post-relayout positions (item 0 = 60h, item 1 = 60h):
+    //   item 0 (60h) → col 0,  (0, 0),  colYs = [60, 0, 0]
+    //   item 1 (60h) → col 1,  (60, 0), colYs = [60, 60, 0]
+    //   item 2 (30h) → col 2,  (120,0), colYs = [60, 60, 30]
+    //   item 3 (30h) → col 2,  (120,30) — col 2 is shortest at y=30
+    //
+    // The discriminator: item 3 lands at (120, 30) only if dynamicItems
+    // is correctly observing item 0 inside static mode. Without it,
+    // no relayout fires, and item 3 stays at (0, 30) with pre-resize
+    // colYs.
+    name: 'dynamic-items',
+    page: 'dynamic-items.html',
+    container: '#dynamic-items',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '120px', top: '30px' }, // discriminating: relayout from item 0 fired
+    ],
+  },
+  {
     // measureFromAttributes (#043 / D.7) — see
     // test/visual/pages/measure-from-attributes.html for the discriminator
     // design. 4 items each with a hidden 1×1 SVG <img> declaring different

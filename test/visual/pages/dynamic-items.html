@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: dynamicItems opt-out (#044 / D.4)</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for the dynamicItems opt-out (#044 / D.4).
+    4 items in a 3-col 180px container, all 60×30 initially. Item 0
+    has the .dynamic-item class. With `static: true + dynamicItems:
+    '.dynamic-item'`, only item 0 gets the per-item ResizeObserver.
+
+    After construction, BOTH item 0 (dynamic) and item 1 (static) are
+    resized 30→60. Expected behavior:
+
+       - Item 0 grows → ResizeObserver fires → relayout. After relayout
+         the new colYs are derived from the CURRENT item heights:
+         items[0]=60, items[1]=60, items[2]=30, items[3]=30.
+         The relayout produces:
+            item 0 → (0, 0), colYs = [60, 0, 0]
+            item 1 → (60, 0), colYs = [60, 60, 0]
+            item 2 → (120, 0), colYs = [60, 60, 30]
+            item 3 → (120, 30) — col 2 is shortest
+
+       - Item 1 grows but no observer → no relayout from item 1's
+         change alone. But because item 0's relayout fires, item 1's
+         new height IS read during that relayout pass (via getSize).
+         So item 1 ends up at (60, 0) with the new height.
+
+    The discriminating signal: the relayout MUST fire (driven by
+    item 0's observer). Without dynamicItems wired up, item 0 would
+    not be observed in static mode, no relayout, and item 3 stays
+    at (0, 30).
+
+    Without the dynamicItems opt-out (static: true alone), item 3
+    lands at (0, 30) — the pre-resize layout where all colYs were 30.
+    With the opt-out + item 0 resize triggering relayout, item 3
+    lands at (120, 30).
+  -->
+  <div id="dynamic-items" class="container">
+    <div class="item dynamic-item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#dynamic-items');
+    var items = grid.querySelectorAll('.item');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+      static: true,
+      dynamicItems: '.dynamic-item',
+    });
+
+    // Resize item 0 (dynamic) and item 1 (static) AFTER construction.
+    items[0].style.height = '60px';
+    items[1].style.height = '60px';
+
+    // Wait several rAF ticks for the ResizeObserver pipeline:
+    //   tick 1 — observer fires for item 0 (dynamic)
+    //   tick 2 — coalesced rAF callback runs layout()
+    //   tick 3 — layout() reads new sizes for ALL items, repositions
+    //   tick 4 — DOM positions stable
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            window.__READY = true;
+          });
+        });
+      });
+    });
+  </script>
+
+</body>
+</html>

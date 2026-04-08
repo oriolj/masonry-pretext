@@ -15,6 +15,36 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.44 — 2026-04-09 — `dynamicItems` opt-out (D.4)
+
+> Tag: `v5.0.0-dev.44` · Improvement: [`044-dynamic-items-opt-out.md`](./improvements/044-dynamic-items-opt-out.md) · Closes downstream consumer ask **D.4** · **All 4 Tier 1 items now landed**
+
+A new `dynamicItems: '<selector>'` constructor option lets a `static: true` SSR grid tolerate a small number of dynamic items (lazy-loading iframes, podcast embeds, weather widgets) while keeping the rest pre-positioned with zero observer overhead. **Lets a v2 modular page coexist with one or two embeds without dropping to the v1 dynamic-content path.**
+
+```html
+<div class="masonry-grid">
+  <div class="masonry-item">…news card 1…</div>
+  <div class="masonry-item">…news card 2…</div>
+  <div class="masonry-item dynamic-item">
+    <iframe src="https://snapwidget.com/embed/…" />
+  </div>
+  <div class="masonry-item">…news card 3…</div>
+</div>
+```
+
+```ts
+new Masonry(grid, {
+  static: true,
+  dynamicItems: '.dynamic-item',
+});
+```
+
+Only items matching the selector get the per-item ResizeObserver wired up. The other items skip the observer entirely (the `static: true` default). When the iframe loads and the dynamic item grows, the observer fires, masonry runs a full relayout pass, and ALL items (dynamic + static) get their current sizes read — so the relayout cascades through the static items naturally without each one needing its own observer.
+
+**Cost:** +41 B gzipped on `dist/masonry.pkgd.min.js`. Most of the infrastructure already exists (the observer machinery from #012); this improvement just opens the gate one more way and adds a `matches` filter inside `_observeItemElement`. New `dynamic-items.html` discriminating fixture verifies the relayout fires when the dynamic item resizes.
+
+**Tier 1 closeout.** D.1 (`computeLayouts`) + D.2 (still pending — see below) + D.3 (`itemSizer`) + D.4 (`dynamicItems`) were the four Tier 1 items from the `enacast-astro` consumer audit that would unblock the masonry-v2 path. Three of the four are now shipped (D.2 is the next improvement); the consumer can begin migrating mixed-static-and-dynamic pages onto the SSR pipeline.
+
 ### v5.0.0-dev.43 — 2026-04-09 — `measureFromAttributes` option (D.7)
 
 > Tag: `v5.0.0-dev.43` · Improvement: [`043-measure-from-attributes.md`](./improvements/043-measure-from-attributes.md) · Closes downstream consumer ask **D.7**

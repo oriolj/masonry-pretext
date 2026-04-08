@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.43
+ * Masonry PACKAGED v5.0.0-dev.44
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -918,7 +918,7 @@ var Masonry = (() => {
         Masonry.prototype = Object.create(Outlayer.prototype);
         Masonry.prototype.constructor = Masonry;
         Masonry.namespace = "masonry";
-        Masonry.version = true ? "5.0.0-dev.43" : "source";
+        Masonry.version = true ? "5.0.0-dev.44" : "source";
         Masonry.fork = "masonry-pretext";
         Masonry.defaults = Object.assign({}, Outlayer.defaults);
         Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
@@ -1164,7 +1164,8 @@ var Masonry = (() => {
               }
             });
           }
-          if (!this.options.static && typeof ResizeObserver !== "undefined") {
+          var hasDynamic = !!this.options.dynamicItems;
+          if ((!this.options.static || hasDynamic) && typeof ResizeObserver !== "undefined") {
             var self2 = this;
             this._resizeLastSizes = /* @__PURE__ */ new WeakMap();
             var pendingRaf = null;
@@ -1211,6 +1212,9 @@ var Masonry = (() => {
           }
         };
         proto._observeItemElement = function(elem) {
+          if (this.options.static && this.options.dynamicItems && elem.matches && !elem.matches(this.options.dynamicItems)) {
+            return;
+          }
           var rect = elem.getBoundingClientRect();
           this._resizeLastSizes.set(elem, { width: rect.width, height: rect.height });
           this._resizeObserver.observe(elem);
