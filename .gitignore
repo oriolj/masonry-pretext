@@ -12,3 +12,6 @@ test/visual/__screenshots__/*.diff.png
 test-results/
 playwright-report/
 playwright/.cache/
+
+# codex CLI marker file
+.codex
