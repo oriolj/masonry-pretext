@@ -15,6 +15,16 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.38 — 2026-04-09 — Source maps in `dist/` (D.5)
+
+> Tag: `v5.0.0-dev.38` · Improvement: [`038-source-maps.md`](./improvements/038-source-maps.md) · Closes downstream consumer ask **D.5**
+
+Every output bundle now ships an external `*.map` sibling with `sourcesContent` inlined. Production error trackers (Sentry, Datadog, Rollbar) can resolve minified stack traces back to `masonry.js` line numbers without additional tooling.
+
+**Cost on the served bundle is just the `sourceMappingURL` directive comment**: +45 B raw / +34 B gzipped on `dist/masonry.pkgd.min.js`. The maps themselves are external — the browser never loads them, only debuggers and error trackers do.
+
+**No source code change.** Single-line change to `scripts/build.mjs`'s `baseConfig` (`sourcemap: true` + `sourcesContent: true`). All seven build targets pick up the change via the existing `makeBuildConfig` factory. All test gates green.
+
 ### Downstream verification — `enacast-astro` shipped masonry-v2 against `v5.0.0-dev.36`
 
 A real downstream consumer (`enacast-astro`, an Astro 6 + Preact frontend for a multi-tenant radio platform) shipped a zero-flash SSR rendering pipeline against `v5.0.0-dev.36` with **zero library changes required**. The implementation:

@@ -1185,6 +1185,14 @@ const baseConfig = {
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
+  // #038 / D.5 — emit external source maps for every output. Lets
+  // production error trackers (Sentry, Datadog, Rollbar...) resolve
+  // minified stack traces back to `masonry.js` line numbers. The maps
+  // are external (`*.map` siblings) with `sourcesContent` inlined so
+  // the symbol server doesn't need read access to the original sources.
+  // Cost: ~50 KB raw per output, none of which the browser parses.
+  sourcemap: true,
+  sourcesContent: true,
   // #037 — inject the package.json version as a compile-time constant
   // so `Masonry.version` reports the actual built tag at runtime. The
   // `typeof __MASONRY_VERSION__` guard in masonry.js falls back to
