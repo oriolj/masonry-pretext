@@ -1196,7 +1196,489 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | — | ~~Batch read/write layout pass~~ | ~~§ 1.2~~ | ⏸️ already-implemented | | **disproven by #009 bench** — masonry already batches; first reflow flushes, subsequent reads are cached. The pretext fast path's measured 1.2-1.3× speedup is the empirical ceiling. See "Disagreements" in § Post-#010 review. |
 | — | ~~Sub-pixel precision (remove rounding hacks)~~ | ~~review #5 item 5.3~~ | ❌ rejected | | **misread the source** — the rounding is for integer col counts, not output positions; you can't span 3.5 columns; output positions are already fractional when columnWidth is. |
 | — | ~~TypedArray `Float64Array` for `colYs`~~ | ~~review #5 item 5.4~~ | ❌ rejected | | **negligible perf** — `colYs` length is 3-12; TypedArray vs Array makes microsecond differences at this size; bench shows the colYs operations are a tiny fraction of layout time. |
+| **— Downstream consumer asks (`enacast-astro`, 2026-04-08) — — — — — — — — — — — — — — — — — — — — — — — —** |
+| **D.1** | **Multi-breakpoint `Masonry.computeLayouts(opts, breakpoints[])`** — emit positions per breakpoint so SSR works on responsive grids that can't predict viewport width | downstream consumer ask | ⬜ proposed | | unblocks the SSR pipeline for responsive multi-breakpoint grids; see § Downstream consumer asks below |
+| **D.2** | **`static: 'until-resize'` hybrid mode** — adopt server positions on first paint AND still relayout on actual viewport changes | downstream consumer ask | ⬜ proposed | | escape hatch when the server's breakpoint guess is wrong; see § Downstream consumer asks below |
+| **D.3** | **`itemSizer(element, columnWidth) → MasonrySize` callback** — generalized size callback that runs in both browser and Node, gets resolved column width as input | downstream consumer ask | ⬜ proposed | | **highest leverage for downstream**; lets non-text grids declare per-item heights as functions of column width without writing a separate measurement library; see § below |
+| **D.4** | **Per-item dynamic-content opt-out** (`dynamicItems: '.dynamic'` selector) | downstream consumer ask | ⬜ proposed | | hybrid grids: most items static + SSR-positioned, one or two iframe items wired to the per-item ResizeObserver; see § below |
+| **D.5** | **Source maps in `dist/`** — emit `*.map` files alongside the JS bundles | downstream consumer ask | ⬜ proposed | | trivial; production Sentry stack traces become readable; see § below |
+| **D.6** | **`'layoutError'` event** fired when an item is rejected from a layout pass | downstream consumer ask | ⬜ proposed | | multi-tenant debugging — currently silent failures; see § below |
+| **D.7** | **`measureFromAttributes` option** — auto-read `<img width height>` to pre-reserve item heights | downstream consumer ask | ⬜ proposed | | eliminates post-image-load layout jank on the dynamic-content path; see § below |
+| **D.8** | **`masonry-pretext/astro` integration subpath** — drop-in `<MasonryGrid>` Astro component with the dynamic-import + View Transitions boilerplate built in | downstream consumer ask | ⬜ proposed | | each Astro consumer rewrites the same ~75-line wrapper today; see § below |
+| **D.9** | **`replaceItems(newItems)`** — swap the item set without destroy/reconstruct | downstream consumer ask | ⬜ proposed | | nice-to-have for SPA navigation between grids; modest LCP win; see § below |
+| **D.10** | **`pause()` / `resume()`** for View Transitions | downstream consumer ask | ⬜ proposed | | speculative — unproven win; see § below |
+| **D.11** | **`Masonry.diagnose()`** structured state snapshot | downstream consumer ask | ⬜ proposed | | dev/debug helper standardization; see § below |
+| **D.12** | **Per-instance `silent: true` option** — currently global only | downstream consumer ask | ⬜ proposed | | trivial ergonomics; see § below |
 
 **v5.0.0-rc.1 ships at the end of step 7 in the new sequencing** (after the size deletions + the breaking changes). v5.0.0 final follows once items P + L + § 2.4 + TS types land.
 
 When updating this table after a change lands: switch the status column, link the improvement file, and add the headline number to the Notes column (e.g. "−1,234 B min.js gz").
+
+---
+
+## Downstream consumer asks (`enacast-astro`)
+
+**Source:** Audit run on 2026-04-08 by the `enacast-astro` consumer (an Astro 6 + Preact frontend for a multi-tenant radio platform). The consumer pinned to `v5.0.0-dev.36`, refactored its component to lean on the library's built-in observers, and audited every fork feature for fit. The pipeline was rejected for the consumer's current modular pages because two preconditions fail (lazy `<img>` without explicit dimensions, iframe embeds with unknown post-load heights). The consumer planned a `masonry-v2` modular page type that opts INTO the SSR pipeline by structurally guaranteeing the preconditions — see the consumer's internal `masonry.md`.
+
+> **Update — 2026-04-08, same day:** the consumer **shipped masonry-v2** end-to-end against `v5.0.0-dev.36` with **zero library changes required**. The implementation uses `Masonry.computeLayout` in the Astro frontmatter, per-module-type closed-form height formulas in `src/utils/module-heights.ts`, and `static: true` + `initLayout: false` for client-side adoption. New backend field `ModularPage.layout_strategy` (CharField enum, three values) replaces the legacy `use_masonry_layout` boolean as the source of truth. Backend and backoffice both enforce the V2 module whitelist (News, Podcast, Weather, Agenda only). View Transitions are wired up for both v1 and v2 paths (news cards → article hero, podcast thumbnails → episode hero) via standard Astro `transition:name` pairs. The Tier 1 items (D.1–D.4) are still on the roadmap; the consumer can ship without them but would benefit from each in turn (D.1 unblocks responsive mobile, D.2 makes the server-guess fragility-free, D.3 simplifies adding new module types, D.4 lets one iframe coexist with N static items on a v2 page). **Conclusion: the existing v5.0.0-dev.36 API surface is sufficient to ship a real zero-flash SSR consumer with the constraints documented in the "When NOT to use this pattern" section of `examples/astro/README.md`.**
+
+The 12 asks below came out of that audit. They are grouped by tier:
+
+- **Tier 1 — would unblock the masonry-v2 path** (D.1, D.2, D.3, D.4): the consumer can't ship its v2 type without at least D.3 + D.4. D.1 + D.2 are stretch goals that would let v2 cover responsive multi-breakpoint grids.
+- **Tier 2 — adopt-immediately on the current dynamic-content path** (D.5, D.6, D.7, D.8): no v2 needed; would improve the existing consumer code today.
+- **Tier 3 — speculative or low-priority** (D.9, D.10, D.11, D.12): listed for completeness; the consumer can implement workarounds if any are deferred indefinitely.
+
+The maintainer should treat these as **one downstream's perspective**, not a contract. Most have alternative paths that don't require library changes; the consumer can implement workarounds in its own code. The most leveraged ones (Tier 1) are flagged because they unlock a measurable Core Web Vitals win for a real downstream.
+
+### Tier 1 — Would unblock the masonry-v2 path
+
+#### D.1 — Multi-breakpoint `Masonry.computeLayouts(opts, breakpoints[])`
+
+**Status:** ⬜ proposed
+**Tier:** Would unblock masonry-v2
+**Effort:** Small (the helper is `computeLayout` in a loop)
+
+**Use case from the consumer's perspective.** The `enacast-astro` masonry container is `<div class="mx-auto max-w-7xl px-4 py-8">` rendered via Astro SSR. Inner width on desktop is `1280 - 32 = 1248px`; on mobile it's viewport-dependent and unknowable from the server. The grid renders 1 / 2 / 3 / 12 columns at four breakpoints (`<768 / 768-1023 / 1024-1279 / >=1280`). A single-breakpoint `Masonry.computeLayout(opts)` call can only emit positions for one container width — meaning the consumer would have to either (a) serve a desktop layout to mobile users and accept a relayout flash on first paint, or (b) compute four layouts in parallel and emit them all.
+
+**Proposed API.**
+
+```ts
+Masonry.computeLayouts(opts: ComputeLayoutOptions, breakpoints: Breakpoint[]): Record<string, ComputeLayoutResult>;
+
+interface Breakpoint {
+  name: string;                // e.g. 'mobile' | 'tablet' | 'desktop' | 'wide'
+  containerWidth: number;      // resolved at server time from a CSS variable / known design system
+  columnWidth: number;         // per-breakpoint column stride
+  gutter?: number;             // per-breakpoint gutter (often the same)
+}
+
+// Example:
+const layouts = Masonry.computeLayouts(
+  { items: itemSizes, columnWidth: 0 /* per-breakpoint */, containerWidth: 0 },
+  [
+    { name: 'mobile',  containerWidth: 360,  columnWidth: 360, gutter: 0 },
+    { name: 'tablet',  containerWidth: 720,  columnWidth: 352, gutter: 16 },
+    { name: 'desktop', containerWidth: 1024, columnWidth: 336, gutter: 16 },
+    { name: 'wide',    containerWidth: 1280, columnWidth: 100, gutter: 16 }, // 12-col grid
+  ],
+);
+// → { mobile: ComputeLayoutResult, tablet: ComputeLayoutResult, desktop: ComputeLayoutResult, wide: ComputeLayoutResult }
+```
+
+The frontend then emits each set of positions either as `data-positions-{name}="x1,y1;x2,y2;..."` attributes (with a tiny client script that picks the right one per `window.matchMedia(...)`) or as breakpoint-keyed CSS custom properties (`--pos-mobile-x: 0; --pos-tablet-x: 200`). Client-side construction with `static: true` + `initLayout: false` adopts the matching set on first paint, then the existing window-resize relayout handles transitions between breakpoints.
+
+**Why we need it.** Our grid is multi-breakpoint by design. Single-breakpoint `computeLayout` can't represent a responsive grid without lying about which breakpoint the viewer is on. This is the structural blocker that makes a 12-column responsive grid SSR-incompatible today, even when the content is otherwise static.
+
+**Effort breakdown.** The helper is mostly a loop over `computeLayout` with a different `containerWidth` + `columnWidth` per iteration. The hard part is documenting the wire-up pattern (how the consumer emits multi-breakpoint positions and how the client picks the right one). A new fixture in `test/visual/pages/multi-breakpoint.html` would assert positions match across all four breakpoints with the same item set.
+
+**Alternative if rejected.** The consumer can compute four layouts in its own Astro frontmatter by calling `Masonry.computeLayout` four times in a loop. The library doesn't need to change. But shipping the helper as a documented part of the SSR pipeline would (a) eliminate boilerplate every consumer would otherwise reinvent, (b) standardize the position-emission pattern so consumers don't drift apart, and (c) signal that responsive SSR is a first-class use case.
+
+#### D.2 — `static: 'until-resize'` hybrid mode
+
+**Status:** ⬜ proposed
+**Tier:** Would unblock masonry-v2
+**Effort:** Medium
+
+**Use case from the consumer's perspective.** D.1 helps, but in a multi-tenant frontend the server may still pick the wrong breakpoint (e.g., the consumer can't reliably read `Sec-CH-UA-Viewport-Width` for every request, so it defaults to "desktop" and gets it wrong on mobile). With `static: true`, the wrong-breakpoint guess produces a permanently-broken layout — the per-item ResizeObserver is disabled, the window-resize hook still fires (Outlayer's `bindResize`) but `needsResizeLayout` is the only thing that catches a width change. If the page loads with the wrong containerWidth, the layout is wrong until the user resizes the window OR navigates away.
+
+**Proposed API.**
+
+```ts
+new Masonry(grid, {
+  static: 'until-resize',  // string variant of the existing boolean option
+  initLayout: false,
+});
+```
+
+Or as a separate boolean (clearer semantics):
+
+```ts
+new Masonry(grid, {
+  static: true,                 // skip transitions, fonts.ready, per-item ResizeObserver
+  staticUntilWidthChange: true, // ALSO re-engage layout if containerWidth changes by more than 1px
+  initLayout: false,
+});
+```
+
+The hybrid mode does everything `static: true` does on construction, BUT it leaves Outlayer's `bindResize` + `needsResizeLayout` active. On first window resize that crosses a real width threshold, it re-runs `layout()` once (full dynamic layout) and from that point on behaves like `static: true` again. Effectively: trust the server until the client proves the server was wrong.
+
+**Why we need it.** Lets v2 pages survive a server-side breakpoint guess. Without it, a wrong-breakpoint guess produces a broken layout permanently until reload. With it, the server guess is just a hint — the client recovers gracefully.
+
+**Effort breakdown.** New conditional in `_create` between fully-static and fully-dynamic. The check is: when `static === 'until-resize'`, call `bindResize()` (already in Outlayer) and skip the per-item ResizeObserver setup. The discriminating fixture varies container width post-construction (via JS-driven viewport resize) and asserts the relayout fires.
+
+**Alternative if rejected.** The consumer can manually wire a `window.addEventListener('resize', ...)` handler that calls `msnry.layout()` when the container's `clientWidth` changes. Currently the consumer does NOT do this in the v1 path because `static: true` is rejected entirely; the consumer relies on Outlayer's built-in resize hook. For v2 the consumer would have to implement the hybrid logic itself, duplicating what the library already mostly does.
+
+#### D.3 — `itemSizer(element, columnWidth) → MasonrySize` callback ⭐
+
+**Status:** ⬜ proposed
+**Tier:** Would unblock masonry-v2 — **highest leverage for the downstream**
+**Effort:** Medium
+
+**Use case from the consumer's perspective.** The existing `pretextify(element)` callback (#009) is text-only via the `pretextOptions` shorthand (#035) — it assumes a measurement function with the shape `(text, font, maxWidth) → height`. Our modular page items aren't text-only; each module is a different shape of HTML:
+
+- **News card:** image (16:9 aspect ratio) + title (1-2 lines) + 3-line description + footer with date. Height = `columnWidth / (16/9) + (titleLines * 24) + (3 * 20) + 40`.
+- **Podcast episode entry:** thumbnail (square) + 2-line title + duration. Height = `columnWidth + 56`.
+- **Weather widget:** static height of 300px regardless of column width.
+- **Banner group:** image (3:1 aspect ratio). Height = `columnWidth / 3`.
+- **Agenda module:** N event rows, each fixed height, count from API. Height = `numEvents * 80 + 60`.
+- **Custom page module:** unknown — this one might still need DOM measurement.
+
+None of these formulas fit the `pretextify` shape. They all need (a) the resolved column width as input, (b) the freedom to declare a heuristic instead of a measurement, and (c) the ability to run in BOTH browser (for the v1 path) and Node (for `Masonry.computeLayout` in the v2 path).
+
+**Proposed API.**
+
+```ts
+new Masonry(grid, {
+  // Callback that returns a size for an item given the resolved column width.
+  // Runs in both browser and Node (for `Masonry.computeLayout`). Returning
+  // `null | undefined | false` falls through to the existing `pretextify`
+  // path, then to `item.getSize()`.
+  itemSizer(element: Element, columnWidth: number): MasonrySize | null | undefined | false {
+    const moduleType = element.dataset.moduleType;
+    const aspectRatio = parseFloat(element.dataset.aspectRatio || '1');
+    switch (moduleType) {
+      case 'ModularPagePodcastModule':
+        return { outerWidth: columnWidth, outerHeight: columnWidth + 56 };
+      case 'ModularPageNewsModule':
+        return { outerWidth: columnWidth, outerHeight: columnWidth / aspectRatio + 124 };
+      case 'ModularPageWeatherModule':
+        return { outerWidth: columnWidth, outerHeight: 300 };
+      // ... etc
+    }
+    return null; // fall through to pretextify or DOM measurement
+  },
+});
+```
+
+For `Masonry.computeLayout`, accept items as either `{ outerWidth, outerHeight }` (current shape, pre-measured) OR `{ data: any, sizer: (cw: number) => MasonrySize }` (new shape, formula-based). The pure-Node path resolves the column width first, then calls each item's sizer.
+
+**Why we need it.** This is the single highest-leverage API addition for `enacast-astro`. It lets us declare per-module-type height formulas in one place (the consumer's component) and have them work identically on the server (for v2 SSR) and on the client (for v1 dynamic content). Without it, every module type needs to either (a) hardcode dimensions in the consumer's frontmatter for SSR (duplicating logic), or (b) use a separate measurement library that doesn't understand mixed-media items.
+
+**Effort breakdown.** Reuse the existing `pretextify` call site in `_getItemLayoutPosition`; add a new `itemSizer` lookup before `pretextify`. The pure-Node `computeLayout` needs a parallel code path that accepts formula-based items: walk the items, resolve `columnWidth`, then call each `sizer(columnWidth)` and use the result. New fixture: `test/visual/pages/item-sizer.html` with mixed-aspect-ratio items, asserts positions match a separate hardcoded-dimensions reference run.
+
+**Alternative if rejected.** The consumer can pre-resolve item heights in its Astro frontmatter (computing `columnWidth` per breakpoint, then evaluating each module's formula manually) and pass the result to `Masonry.computeLayout` as plain `{ outerWidth, outerHeight }`. This works for the SSR path. For the client-side relayout path, the consumer would need to wire `pretextify` to do the same lookup. Net: the consumer can simulate `itemSizer` in their own code, but it requires writing the formula resolver twice (once for server, once for client), and the two implementations must stay in sync. A built-in option eliminates that duplication.
+
+#### D.4 — Per-item dynamic-content opt-out (`dynamicItems: '.dynamic'`)
+
+**Status:** ⬜ proposed
+**Tier:** Would unblock masonry-v2
+**Effort:** Medium
+
+**Use case from the consumer's perspective.** `static: true` is per-instance, all-or-nothing. If a v2 modular page contains a single iframe item (e.g., a podcast player embed, an Instagram SnapWidget, a YouTube embed), the entire page must drop to the v1 path. That's wasteful — the iframe might be one of 20 items, and the other 19 are perfectly suitable for SSR.
+
+**Proposed API.**
+
+```ts
+new Masonry(grid, {
+  static: true,
+  // Items matching this selector get the per-item ResizeObserver wired up
+  // (overriding `static: true` for those items only). All other items skip
+  // the observer entirely. Default `null` (no override — behaves like
+  // `static: true` everywhere).
+  dynamicItems: '.dynamic-item',
+});
+```
+
+Used with HTML like:
+
+```html
+<div class="masonry-grid">
+  <div class="masonry-item">…news card 1…</div>
+  <div class="masonry-item">…news card 2…</div>
+  <div class="masonry-item dynamic-item">
+    <iframe src="https://snapwidget.com/embed/…" />
+  </div>
+  <div class="masonry-item">…news card 3…</div>
+</div>
+```
+
+The library wires the per-item ResizeObserver only for the `.dynamic-item` element. When the iframe loads and the item grows, the observer fires, the rAF coalescing kicks in, and the layout pass relays out the affected columns. The other 19 items stay static and SSR-positioned.
+
+**Why we need it.** Lets v2 pages tolerate mixed-static-and-dynamic content without dropping to the v1 path. Most modular pages will have one or two dynamic items (a podcast embed, a weather widget that animates) and a dozen static ones (news cards, banner groups, custom pages). With this option, the static items get the SSR pipeline benefit (CLS = 0.00 on first paint) and the dynamic items get the post-load relayout safety net.
+
+**Effort breakdown.** The ResizeObserver wire-up loop in `_create` already iterates items; just filter by the selector when present. `_itemize` (called from `appended` / `prepended`) needs the same filter. The discriminating fixture has 4 static items + 1 dynamic item, programmatically resizes the dynamic one, asserts only the dynamic item triggers a relayout (the static items keep their server positions until the resize cascades through them).
+
+**Alternative if rejected.** The consumer can ban iframe modules from v2 entirely (which is the current plan in the consumer's `masonry.md`). This is simpler but more restrictive — it means an entire modular page can't be v2 just because it has one embed. The opt-out option would let many more pages be v2.
+
+### Tier 2 — Adopt-immediately on the current dynamic-content path
+
+#### D.5 — Source maps in `dist/`
+
+**Status:** ⬜ proposed
+**Tier:** Adopt-immediately, **trivial effort**
+**Effort:** Trivial (~5 lines in `scripts/build.mjs`)
+
+**Use case from the consumer's perspective.** The consumer ships to production via Vercel + Sentry. When a runtime error happens inside the masonry library (e.g., a multi-tenant content type produces an unexpected DOM shape that trips the library), Sentry receives the stack trace as `at o (masonry.pkgd.min.js:1:14523)` — a single-line minified bundle with no symbol names. We can't tell which line in the source that maps to. A `.map` file alongside the bundle would let Sentry resolve the trace to actual `masonry.js` line numbers.
+
+**Proposed API.** None — pure build-time change.
+
+Add to `scripts/build.mjs`:
+
+```js
+const baseConfig = {
+  // ... existing options
+  sourcemap: true,  // emit external .map files
+  sourcesContent: true,  // include source content inline (so Sentry can show the line)
+};
+```
+
+And add `//# sourceMappingURL=masonry.pkgd.min.js.map` (or `.cjs.map` / `.mjs.map`) directives at the end of each minified file (esbuild does this automatically when `sourcemap: true` is set).
+
+**Why we need it.** Production debugging. Without source maps, every Sentry report from inside masonry is opaque. With them, every report points at the actual source line that threw — same DX as every other npm library that ships maps.
+
+**Effort breakdown.** Set `sourcemap: true` in the `baseConfig` of `scripts/build.mjs`. Add `*.map` to the `files` array in `package.json` so the maps ship in the npm tarball. Verify Sentry resolves a trace from a synthetic crash. ~5 lines of build script change plus a one-line package.json edit. **No source code changes, no behavior changes.** Cheapest and most impactful Tier 2 item.
+
+**Alternative if rejected.** Consumers can self-build maps from the `./source` package export by running `masonry.js` through their own bundler. But that defeats the point of shipping a pre-built library, and most consumers don't bother.
+
+#### D.6 — `'layoutError'` event
+
+**Status:** ⬜ proposed
+**Tier:** Adopt-immediately
+**Effort:** Small
+
+**Use case from the consumer's perspective.** Multi-tenant frontends like `enacast-astro` render arbitrary HTML modules from different radios. If a radio publishes a malformed module (e.g., a banner group with 0 banners that has 0 width, a custom page module with an empty `<div>`, an iframe with `display: none`), the library either silently skips it or positions it at `(0, 0)` and the visual artifact is hard to attribute. There's no way to log "hey, item N on radio X failed to layout for reason Y" to Sentry / Matomo for production debugging.
+
+**Proposed API.**
+
+```ts
+msnry.on('layoutError', (event: { item: MasonryItem; reason: string; columnWidth: number; cols: number }) => {
+  // forward to Sentry / Matomo / wherever
+  console.warn(`[masonry] item rejected: ${event.reason}`, event.item.element);
+});
+
+// `reason` is a structured string from a small fixed enum:
+// - 'zero-width' — item.size.outerWidth === 0
+// - 'colspan-overflow' — colSpan > cols (item too wide for the grid)
+// - 'detached' — element.parentNode === null
+// - 'measurement-failed' — getSize() threw or returned undefined
+// - ...
+```
+
+Fired from inside `_getItemLayoutPosition` when an item is rejected, or from `_layoutItems` when the queue drops an item. Doesn't replace existing failure paths; just exposes them to consumers.
+
+**Why we need it.** Multi-tenant debugging. Currently when a radio's content does something weird, the consumer has to either reproduce the issue locally or log into the radio's domain manually. With this event, the consumer can forward the rejection to Sentry as a `console.warn` and get a Sentry alert with full context (item HTML, reason, current layout state).
+
+**Effort breakdown.** Add a try/catch around the per-item layout logic. On catch, emit `'layoutError'` via the existing `emitEvent` machinery. The event payload is small (~5 fields). New fixture: `test/visual/pages/layout-error.html` with a deliberately-broken item, asserts the event fires with the expected reason.
+
+**Alternative if rejected.** The consumer can wrap `msnry.layout()` in a try/catch and inspect `msnry.items` after each call to find items at `(0, 0)` or with zero size. But that's polling, not event-driven, and it can't catch silent failures inside the rAF-coalesced relayouts.
+
+#### D.7 — `measureFromAttributes` option
+
+**Status:** ⬜ proposed
+**Tier:** Adopt-immediately (after consumer ships news image dimensions)
+**Effort:** Medium
+
+**Use case from the consumer's perspective.** After the consumer ships news card image dimensions (a prereq for the v2 path), every news-card `<img>` will have `width` and `height` attributes. The browser already reserves space for these via `aspect-ratio`, so the item's `getBoundingClientRect()` returns the right size BEFORE the image actually loads. But the library's per-item ResizeObserver still fires when the image transitions from "reserved space" to "loaded image" — even though the size doesn't change. That's a wasted relayout per item.
+
+**Proposed API.**
+
+```ts
+new Masonry(grid, {
+  // When set, walk `<img>` children of each item at construction time and
+  // read their `width` / `height` attributes. Use the resulting aspect ratio
+  // + the resolved column width to compute a "reserved height" for the item.
+  // The per-item ResizeObserver becomes a safety net for dimension drift,
+  // not the primary mechanism.
+  measureFromAttributes: true,
+});
+```
+
+The library reads `<img width height>` (or `<img style="aspect-ratio: …">` or any `[data-aspect-ratio]` attribute), computes a per-item reserved height, and uses it as the initial `item.size.outerHeight`. Construction-time layout is correct on first paint without waiting for images to load. The ResizeObserver still runs, but no relayouts fire because the actual image dimensions match the declared ones.
+
+**Why we need it.** Eliminates the post-image-load relayout cycle in our current dynamic-content path the moment we ship news image dimensions. Net: smaller hydration flash on the v1 path even before v2 ships.
+
+**Effort breakdown.** New helper called from `_create` when the option is set. Walks `item.querySelectorAll('img[width][height], img[style*="aspect-ratio"], [data-aspect-ratio]')`, computes the reserved height for each item. Plays nicely with the existing pretextify / per-item ResizeObserver paths (they take precedence). New fixture: `test/visual/pages/measure-from-attributes.html` with `<img width height>` on every item, asserts initial layout is correct WITHOUT any image actually loading (use a tiny SVG data URL).
+
+**Alternative if rejected.** The consumer can wrap each item in a `<div style="aspect-ratio: …">` that reserves the box. The browser handles the rest. This works but requires consumer-side templating changes for every module type that contains an image. The library option would do it automatically for any `<img>` with attributes.
+
+#### D.8 — `masonry-pretext/astro` integration subpath
+
+**Status:** ⬜ proposed
+**Tier:** Adopt-immediately
+**Effort:** Small to Medium
+
+**Use case from the consumer's perspective.** The consumer's `MasonryGrid.tsx` is ~75 lines, and most of those lines are framework-glue boilerplate: dynamic import to avoid SSR, `requestAnimationFrame` first-layout dance, `useEffect` cleanup chain, `cancelled` flag for unmounted state, debug helper attachment. Only the constructor options object and the JSX `<div ref={...}>` are domain-specific.
+
+The fork already has `examples/astro/` showing the SSR pipeline. What it doesn't have is a packaged drop-in component that bundles the dynamic-content boilerplate so consumers can write `<MasonryGrid>{children}</MasonryGrid>` and get the same thing.
+
+**Proposed API.** Either ship a new subpath export:
+
+```ts
+// In a consumer's Astro file:
+import MasonryGrid from 'masonry-pretext/astro';
+
+// Renders a grid container with View Transitions awareness, dynamic-import
+// island, and SSR-safe wrapping. Options match the underlying Masonry constructor.
+<MasonryGrid options={{ columnWidth: '.grid-sizer', percentPosition: true, gutter: 0 }}>
+  <div class="grid-sizer" />
+  {modules.map(m => <div class="masonry-item">{m.html}</div>)}
+</MasonryGrid>
+```
+
+Or extend the existing `<masonry-grid>` Custom Element wrapper (#034) with `astro:page-load` awareness and document the recipe in `examples/astro/`:
+
+```html
+<!-- in an Astro template -->
+<masonry-grid item-selector=".masonry-item" column-width=".grid-sizer" percent-position>
+  <div class="grid-sizer"></div>
+  {modules.map(m => <div class="masonry-item" set:html={m.html} />)}
+</masonry-grid>
+```
+
+The Custom Element approach is framework-agnostic but currently doesn't survive Astro's View Transitions cleanly (a View Transition swaps the document; the Custom Element instance may or may not persist depending on `transition:persist`). Adding an `astro:page-load` listener to re-init when the page changes would fix this.
+
+**Why we need it.** Each Astro consumer rewrites the same ~75-line wrapper today. Packaging it as a subpath export means the wrapper is maintained in one place (the fork) instead of every downstream. Same functional behavior; less duplicated code; easier to bump library versions because the consumer-side wrapper is owned by the fork.
+
+**Effort breakdown.** A new `examples/astro/` extension shipped as a subpath. The Astro Integration would be a separate `.astro` file (or `.tsx` for Preact) that wraps the existing Masonry constructor with the View-Transitions-aware lifecycle. ~50 LOC. A new `package.json` `exports` entry: `"./astro": "./astro/index.astro"` (or similar).
+
+**Alternative if rejected.** Consumers continue to write their own wrappers. The fork's existing `examples/astro/` already shows the pattern; downstream just copies it. The integration package is pure ergonomics, not a blocker.
+
+### Tier 3 — Speculative or low-priority
+
+#### D.9 — `replaceItems(newItems)` for SPA navigation
+
+**Status:** ⬜ proposed
+**Tier:** Nice-to-have, modest impact
+**Effort:** Small
+
+**Use case from the consumer's perspective.** When the consumer navigates between two masonry pages via Astro View Transitions, the same `<MasonryGrid>` component MAY remount with a different item set. Today the consumer destroys the instance on unmount and reconstructs on mount, throwing away the ResizeObserver wire-up + column measurements + rAF coalescing state. For navigation between two structurally similar pages (e.g., `/eltemps/` → `/SantJustWeekly/`), this is wasteful.
+
+**Proposed API.**
+
+```ts
+// Atomic swap: removes all current items, adds the new ones, runs one
+// relayout. Reuses the existing observer + column measurements + rAF
+// coalescing state. Equivalent to `destroy() + new Masonry(...)` but skips
+// the constructor cost.
+msnry.replaceItems(newItems: Element | Element[] | NodeListOf<Element>): void;
+```
+
+**Why we need it.** Incremental LCP / TBT win on View-Transition navigations between modular pages. Modest measured impact (probably ~5-10ms saved per navigation) but the ergonomic win is bigger than the perf win — consumers don't have to manage destroy/reconstruct lifecycle in their framework integration.
+
+**Effort breakdown.** The library already supports `appended` / `prepended` / `remove`. `replaceItems` is "remove all + append all" with a single relayout instead of two. ~20 LOC. Discriminating fixture verifies the per-item observer is preserved across the swap.
+
+**Alternative if rejected.** The consumer can implement this entirely in its own code: `msnry.remove(oldItems); msnry.appended(newItems);`. The library option is pure ergonomics. Skip if maintainer prefers the smaller API surface.
+
+#### D.10 — `pause()` / `resume()` for View Transitions
+
+**Status:** ⬜ proposed
+**Tier:** Speculative — unproven win
+**Effort:** Small
+
+**Use case from the consumer's perspective.** During a View Transition, the document is in a half-swapped state. ResizeObserver might fire on items that are about to be removed (because the transition's exit animation changes their visual size), triggering wasted relayouts on the dying instance. There's no way to suspend the observer cleanly without disconnecting it entirely.
+
+**Proposed API.**
+
+```ts
+msnry.pause(): void;   // disconnect observers, ignore further events
+msnry.resume(): void;  // reconnect observers, resume normal behavior
+```
+
+**Why we need it.** Speculative — the consumer hasn't measured whether this is actually a problem. The current cleanup chain via `useEffect` cleanup probably handles it correctly (destroy fires before the new instance constructs).
+
+**Effort breakdown.** Small. Set a `_paused` flag, check it in the ResizeObserver callback before scheduling a relayout. Cheap to implement.
+
+**Alternative if rejected.** Skip. The consumer's existing destroy-then-reconstruct path is correct; the optimization is theoretical until we measure a real flicker.
+
+#### D.11 — `Masonry.diagnose()` structured state snapshot
+
+**Status:** ⬜ proposed
+**Tier:** Dev/debug helper
+**Effort:** Small
+
+**Use case from the consumer's perspective.** The consumer has a hand-rolled `window.debugMasonry()` that walks `instance.items` and logs sizes/positions/styles. Not portable across consumers — every project rewrites the same dump function. A standardized snapshot would simplify cross-project debugging tooling.
+
+**Proposed API.**
+
+```ts
+interface MasonryDiagnostic {
+  cols: number;
+  columnWidth: number;
+  containerWidth: number;
+  containerHeight: number;
+  items: Array<{
+    element: Element;
+    position: { x: number; y: number };
+    size: { outerWidth: number; outerHeight: number };
+    colSpan: number;
+    observerWired: boolean;
+  }>;
+  observers: {
+    resize: 'wired' | 'skipped (static mode)';
+    mutation: 'wired' | 'skipped';
+    fontsReady: 'pending' | 'fired' | 'skipped';
+  };
+  lastLayoutTimestamp: number;
+  lastRelayoutReason: 'manual' | 'window-resize' | 'item-resize' | 'mutation' | 'fonts-loaded' | null;
+}
+
+msnry.diagnose(): MasonryDiagnostic;
+```
+
+**Why we need it.** Debug helper standardization. The structured shape lets dev tools / testing frameworks consume the snapshot programmatically instead of parsing console logs.
+
+**Effort breakdown.** Just expose internal state in a typed shape. ~30 LOC + d.ts entry.
+
+**Alternative if rejected.** Each consumer keeps writing its own debug helper. Skip if maintainer prefers smaller API surface.
+
+#### D.12 — Per-instance `silent: true` constructor option
+
+**Status:** ⬜ proposed
+**Tier:** Trivial ergonomics
+**Effort:** Trivial
+
+**Use case from the consumer's perspective.** `Masonry.silent` is currently a static property that suppresses the one-time `console.info` banner globally. Set once at app boot; affects all instances. The consumer has no problem with this approach, but a per-instance option would let the consumer suppress the banner on a single grid (e.g., a server-rendered preview iframe) without affecting global state.
+
+**Proposed API.**
+
+```ts
+new Masonry(grid, {
+  silent: true,  // suppress the one-time banner for this instance only
+});
+```
+
+**Why we need it.** Marginal. The consumer already sets `Masonry.silent = true` once at app boot and doesn't need finer control. Per-instance is more flexible but the use cases are speculative.
+
+**Effort breakdown.** Read from options during construction. ~3 LOC.
+
+**Alternative if rejected.** Skip. Global is fine for our case. Listed for completeness only.
+
+---
+
+### Summary of consumer asks
+
+| # | Item | Tier | Effort | Rationale |
+|---|---|---|---|---|
+| **D.1** | Multi-breakpoint `computeLayouts` | Tier 1 | Small | Enables responsive SSR; the consumer's grid is multi-breakpoint by design |
+| **D.2** | `static: 'until-resize'` hybrid | Tier 1 | Medium | Escape hatch when server's breakpoint guess is wrong |
+| **D.3** | `itemSizer(elem, columnWidth)` callback ⭐ | Tier 1 | Medium | **Highest leverage**; mixed-media items can declare height formulas |
+| **D.4** | Per-item `dynamicItems` opt-out | Tier 1 | Medium | Hybrid grids: most static + one iframe |
+| **D.5** | Source maps in `dist/` | Tier 2 | Trivial | Production Sentry stack traces become readable |
+| **D.6** | `'layoutError'` event | Tier 2 | Small | Multi-tenant debugging, currently silent failures |
+| **D.7** | `measureFromAttributes` | Tier 2 | Medium | Eliminates post-image-load relayout cycle |
+| **D.8** | `masonry-pretext/astro` subpath | Tier 2 | Small-Medium | Drop-in `<MasonryGrid>` Astro component |
+| **D.9** | `replaceItems(newItems)` | Tier 3 | Small | Modest LCP win for SPA navigation |
+| **D.10** | `pause()` / `resume()` | Tier 3 | Small | Speculative, unproven win |
+| **D.11** | `Masonry.diagnose()` | Tier 3 | Small | Dev/debug helper standardization |
+| **D.12** | Per-instance `silent` | Tier 3 | Trivial | Marginal ergonomics |
+
+**Recommended sequencing for the maintainer (from the downstream's perspective):**
+
+1. **D.5 first** — trivial effort, immediate production-debugging win, no behavior change. No reason to delay.
+2. **D.3 second** — highest leverage; unblocks the v2 SSR pipeline for any consumer with mixed-media items. Lays the foundation for D.1, D.2, D.4 (each builds on the assumption that items can declare formula-based heights).
+3. **D.7 third** — pairs well with D.3 because the consumer will be auditing image dimensions anyway as part of the v2 prep work.
+4. **D.6 fourth** — small effort, helps the maintainer too (if they're investigating user-reported bugs from multi-tenant downstreams).
+5. **D.1 + D.4 + D.2** — the rest of the v2 unblockers, in any order. Each is small-to-medium effort and each closes one specific failing precondition.
+6. **D.8** — once D.1-D.7 are stable, package the Astro integration as a subpath export so downstream consumers don't have to keep rewriting the wrapper.
+7. **D.9, D.10, D.11, D.12** — speculative or marginal. Implement if the maintainer has spare cycles and a discriminating fixture; otherwise skip and revisit if a real downstream files an issue.
+
+If the maintainer can pick only ONE item from this list, it should be **D.5** (source maps) — trivial effort, free win, no design decisions to make. If they can pick TWO, add **D.3** (`itemSizer`) — the structural unblocker for non-text SSR grids.
+
+**Non-asks** (considered and rejected):
+
+- **Web Worker layout engine** — already on the roadmap as a v5.1+ deferred item; the consumer doesn't have grids large enough to benefit (typical page = 7-15 items).
+- **TypedArray for `colYs`** — already rejected upstream; negligible perf at our grid sizes.
+- **MutationObserver auto-relayout** (`observeMutations`) — already shipped (#031); the consumer doesn't directly manipulate the grid DOM, so it's not relevant to us.
+- **`<masonry-grid>` Custom Element** — already shipped (#034); the consumer prefers the Preact wrapper because it integrates cleanly with Astro's `useEffect`-based cleanup. D.8 (Astro subpath) would offer a drop-in alternative.
+- **Promise-based async/await API** (item R) — already deferred, conditional on the hide/reveal animation system staying alive; the consumer doesn't await layout completions today.
+- **Position via `transform: translate3d`** — already deferred upstream as speculative; the consumer hasn't measured a problem with the current `top/left` approach.

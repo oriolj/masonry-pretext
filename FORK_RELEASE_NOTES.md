@@ -15,6 +15,26 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### Downstream verification — `enacast-astro` shipped masonry-v2 against `v5.0.0-dev.36`
+
+A real downstream consumer (`enacast-astro`, an Astro 6 + Preact frontend for a multi-tenant radio platform) shipped a zero-flash SSR rendering pipeline against `v5.0.0-dev.36` with **zero library changes required**. The implementation:
+
+- Calls `Masonry.computeLayout` in the Astro frontmatter (server-side, pure Node) with per-module-type closed-form height formulas in `src/utils/module-heights.ts`. No `pretextify` callback needed — items are mixed-media (images + text + small embeds), not pure text.
+- Emits inline absolute positions (`left`/`top`) on each module's wrapper `<div>`. Container reserves the full computed height via `min-height` so flow layout matches before any JS runs.
+- Hydrates with `new Masonry(grid, { initLayout: false, static: true })` so the library adopts the server positions and skips the per-item ResizeObserver / `document.fonts.ready` hook.
+- Backend (Django) gained a new `ModularPage.layout_strategy` enum field (`'grid' | 'masonry' | 'masonry-static'`) replacing the legacy `use_masonry_layout` boolean. The backend rejects unsupported module types at save time (whitelist: News, Podcast, Weather, Agenda — all module types whose rendered height is statically knowable from the API response).
+- Backoffice (Next.js admin panel) filters the module-type picker on v2 pages and shows an actionable error banner when a radio tries to switch a v1 page with offending modules to v2. Defense-in-depth: backend rejects, backoffice prevents.
+
+**Result:** end-to-end zero-flash modular pages with the expected CLS = 0.00 outcome on the canary content type. The 12 downstream consumer asks (D.1–D.12) in `FORK_ROADMAP.md` remain on the roadmap as **future improvements that would unlock progressively more pages**, but none of them are blocking. Specifically:
+
+- **D.1 (multi-breakpoint `computeLayouts`)** — without it, the v2 path is single-breakpoint (desktop-only positions). Mobile users see desktop positions on first paint and the layout corrects on the next viewport change. Acceptable for the canary; D.1 would make the mobile path exact.
+- **D.3 (`itemSizer` callback)** — without it, the consumer's height formulas live in their own `module-heights.ts` instead of being pluggable through the library. Cosmetic improvement; not blocking.
+- **D.4 (per-item dynamic-content opt-out)** — without it, the V2 whitelist excludes iframe / Instagram / Twitter / YouTube modules entirely. With D.4, a v2 page could tolerate one or two embeds while keeping the rest static.
+
+**Conclusion:** the existing `v5.0.0-dev.36` API surface (`Masonry.computeLayout` + `static: true` + `initLayout: false`) is sufficient to ship a real zero-flash SSR consumer with the documented constraints in `examples/astro/README.md`. The downstream did not need to monkey-patch, fork, or extend the library — just consume it.
+
+See the consumer's `masonry.md` (in the `enacast-astro` repo) for the full architecture, the per-module-type height formulas, the View Transitions integration, and the mobile-fallback caveat. The `RELEASE_NOTES.md` in `enacast-astro` (under "Unreleased") and in `enacast` (the Django backend) document the full multi-repo change set.
+
 ---
 
 ## v5.0.0-dev.20 — 2026-04-08 — Hydration + server-layout benchmarks + README headline (§ SSR / PRETEXT_SSR Phase 5)
