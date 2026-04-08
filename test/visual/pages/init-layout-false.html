@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: initLayout: false adoption (#018 / SSR Phase 3)</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    /*
+      Discriminating fixture for the SSR adoption path (#018 / Phase 3 of
+      PRETEXT_SSR_ROADMAP.md).
+
+      The "SSR adoption" path means: the server has already computed
+      positions (via Masonry.computeLayout, #017) and emitted them inline
+      as `style="position: absolute; left: Xpx; top: Ypx;"`. The client
+      constructs masonry with `initLayout: false, static: true` and is
+      expected to LEAVE THE EXISTING POSITIONS ALONE — no relayout, no
+      overwrite, no hydration flash.
+
+      This fixture pre-positions 4 items in a SINGLE-COLUMN STACK at
+      (0, 0), (0, 30), (0, 60), (0, 90) — a layout that masonry would
+      NEVER produce naturally (natural layout for 4 60×30 items in a
+      3-col 180px container is the 3-col tile (0,0), (60,0), (120,0),
+      (0,30)). The "wrong shape" is the discriminator.
+
+      If init-layout-false adoption works correctly: items stay in the
+      single-column stack. The test passes.
+
+      If init-layout-false is broken (masonry overwrites positions): items
+      get repositioned to the 3-col tile. The test fails loudly because
+      items 1, 2, 3 are no longer at x=0.
+    */
+    #init-layout-false { width: 180px; padding: 0; margin-bottom: 20px; }
+    #init-layout-false .item { width: 60px; height: 30px; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+
+  <div id="init-layout-false" class="container">
+    <!--
+      Pre-positioned by the "server" (this HTML is the SSR output). The
+      key bits are:
+        - position: absolute  ← matches what Item._create sets, so it's a no-op
+        - left / top          ← server-computed positions (single-col stack)
+      Container has `position: relative` from Outlayer's containerStyle,
+      which is set during construction even with initLayout: false.
+    -->
+    <div class="item" style="position: absolute; left: 0px; top: 0px;"></div>
+    <div class="item" style="position: absolute; left: 0px; top: 30px;"></div>
+    <div class="item" style="position: absolute; left: 0px; top: 60px;"></div>
+    <div class="item" style="position: absolute; left: 0px; top: 90px;"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#init-layout-false');
+
+    // The canonical SSR adoption combo:
+    //   initLayout: false  → don't run the constructor's layout() pass
+    //   static: true       → no ResizeObserver, no fonts.ready hook,
+    //                        forces transitionDuration: 0
+    //
+    // With this combo, masonry's construction should leave the existing
+    // inline styles alone. No subsequent relayout fires (no observer, no
+    // resize listener wakes), so the SSR positions stay forever.
+    window.__MSNRY = new Masonry(grid, {
+      itemSelector: '.item',
+      columnWidth: 60,
+      initLayout: false,
+      static: true,
+    });
+
+    // Wait two rAF ticks. If anything were going to overwrite positions
+    // (a deferred fonts.ready handler, a ResizeObserver pre-seed loop,
+    // etc.), it would have fired by now. Reading positions after waiting
+    // is the strongest assertion the test can make about "no relayout
+    // happens after construction in static + initLayout: false mode."
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        window.__READY = true;
+      });
+    });
+  </script>
+
+</body>
+</html>

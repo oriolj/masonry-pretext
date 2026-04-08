@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.17
+ * Masonry PACKAGED v5.0.0-dev.18
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License

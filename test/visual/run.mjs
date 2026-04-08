@@ -162,6 +162,24 @@ const cases = [
       { left: '208px', top: '0px' }, // discriminating: 5-col layout, no wrap
     ],
   },
+  {
+    // SSR adoption (#018 / Phase 3) — see test/visual/pages/init-layout-false.html
+    // for the discriminator design. Items are pre-positioned in a SINGLE-COLUMN
+    // STACK at x=0 — a layout masonry would never produce naturally for 4 60×30
+    // items in a 3-col 180px container. Constructed with `initLayout: false,
+    // static: true`. If adoption works, items stay in the stack; if init-layout-
+    // false is broken, items 1/2/3 get repositioned to the natural 3-col tile
+    // and their x changes from 0 to 60/120/0.
+    name: 'init-layout-false',
+    page: 'init-layout-false.html',
+    container: '#init-layout-false',
+    expected: [
+      { left: '0px', top: '0px'  },
+      { left: '0px', top: '30px' }, // discriminating: stays at x=0 (not 60)
+      { left: '0px', top: '60px' }, // discriminating: stays at x=0 (not 120)
+      { left: '0px', top: '90px' }, // discriminating: stays at x=0 (not 0 in row 2)
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
