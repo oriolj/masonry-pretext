@@ -625,6 +625,45 @@ var instances = new WeakMap();`,
   return elem && instances.get( elem );
 };`,
       },
+      // ── #030 — simplify _emitCompleteOnItems (item D) ───────────────────
+      // Items emit `eventName` SYNCHRONOUSLY during `_processLayoutQueue`
+      // (Item.layoutPosition fires `'layout'` after writing positions, with
+      // or without transitions). The per-item `once()` aggregation is
+      // therefore unnecessary — `_layoutItems` already runs synchronously
+      // through the queue, so we can fire the aggregate `eventNameComplete`
+      // event directly. Removing the once() machinery unblocks the
+      // EvEmitter shim (which drops `proto.once`).
+      {
+        description: '[#030] outlayer.js — replace _emitCompleteOnItems with direct dispatch',
+        find: `proto._emitCompleteOnItems = function( eventName, items ) {
+  var _this = this;
+  function onComplete() {
+    _this.dispatchEvent( eventName + 'Complete', null, [ items ] );
+  }
+
+  var count = items.length;
+  if ( !items || !count ) {
+    onComplete();
+    return;
+  }
+
+  var doneCount = 0;
+  function tick() {
+    doneCount++;
+    if ( doneCount == count ) {
+      onComplete();
+    }
+  }
+
+  // bind callback
+  items.forEach( function( item ) {
+    item.once( eventName, tick );
+  });
+};`,
+        replace: `proto._emitCompleteOnItems = function( eventName, items ) {
+  this.dispatchEvent( eventName + 'Complete', null, [ items ] );
+};`,
+      },
       // ── #029 — delete Outlayer.create factory + subclass helper (item E) ─
       // masonry.js inlines the Outlayer subclass directly (#029 / item E),
       // so the factory + the subclass helper + the htmlInit auto-init are
@@ -1018,6 +1057,70 @@ const matchesSelectorShimPlugin = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// `ev-emitter` shim plugin (improvement #030 / item D)
+//
+// Replace the bundled `desandro/ev-emitter` package with a ~30 LOC inlined
+// version. The original is ~110 LOC and includes:
+//   - proto.on (the only frequently-used method)
+//   - proto.off (used by users + internally)
+//   - proto.once (unused after #028 deleted Item.remove's transition path
+//                 and #024 deleted stagger's reveal/hide aggregation)
+//   - proto.allOff (unused anywhere in the bundle)
+//   - proto.emitEvent (with `_onceEvents` cleanup branches)
+//   - the `_onceEvents` storage tracking that proto.once + proto.emitEvent
+//     coordinate through
+//
+// The shim keeps `on` / `off` / `emitEvent` (which masonry's public event
+// API needs) and drops the `once` machinery. Also drops the `_onceEvents`
+// removal branches inside `emitEvent` so the loop is straight-line.
+// ─────────────────────────────────────────────────────────────────────────────
+const evEmitterShimContents = `
+'use strict';
+function EvEmitter() {}
+var proto = EvEmitter.prototype;
+proto.on = function( eventName, listener ) {
+  if ( !eventName || !listener ) return;
+  var events = this._events = this._events || {};
+  var listeners = events[ eventName ] = events[ eventName ] || [];
+  if ( listeners.indexOf( listener ) == -1 ) listeners.push( listener );
+  return this;
+};
+proto.off = function( eventName, listener ) {
+  var listeners = this._events && this._events[ eventName ];
+  if ( !listeners || !listeners.length ) return;
+  var index = listeners.indexOf( listener );
+  if ( index != -1 ) listeners.splice( index, 1 );
+  return this;
+};
+proto.emitEvent = function( eventName, args ) {
+  var listeners = this._events && this._events[ eventName ];
+  if ( !listeners || !listeners.length ) return;
+  // copy to avoid interference if .off() in listener
+  listeners = listeners.slice( 0 );
+  args = args || [];
+  for ( var i = 0; i < listeners.length; i++ ) {
+    listeners[ i ].apply( this, args );
+  }
+  return this;
+};
+module.exports = EvEmitter;
+`;
+
+const evEmitterShimPlugin = {
+  name: 'ev-emitter-shim',
+  setup(build) {
+    build.onResolve({ filter: /^ev-emitter$/ }, () => ({
+      path: 'ev-emitter-shim',
+      namespace: 'ev-emitter-shim',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'ev-emitter-shim' }, () => ({
+      contents: evEmitterShimContents,
+      loader: 'js',
+    }));
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // `get-size` shim plugin (improvement #027 / item O)
 //
 // Replace the bundled `desandro/get-size` package with a much smaller
@@ -1099,7 +1202,7 @@ const baseConfig = {
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
-  plugins: [matchesSelectorShimPlugin, getSizeShimPlugin, depFilePatchesPlugin],
+  plugins: [matchesSelectorShimPlugin, getSizeShimPlugin, evEmitterShimPlugin, depFilePatchesPlugin],
 };
 
 const iifeSharedConfig = {

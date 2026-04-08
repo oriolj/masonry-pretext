@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.29
+ * Masonry PACKAGED v5.0.0-dev.30
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -12,79 +12,38 @@ var Masonry = (() => {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   };
 
-  // node_modules/ev-emitter/ev-emitter.js
-  var require_ev_emitter = __commonJS({
-    "node_modules/ev-emitter/ev-emitter.js"(exports, module) {
-      (function(global, factory) {
-        if (typeof define == "function" && define.amd) {
-          define(factory);
-        } else if (typeof module == "object" && module.exports) {
-          module.exports = factory();
-        } else {
-          global.EvEmitter = factory();
+  // ev-emitter-shim:ev-emitter-shim
+  var require_ev_emitter_shim = __commonJS({
+    "ev-emitter-shim:ev-emitter-shim"(exports, module) {
+      "use strict";
+      function EvEmitter() {
+      }
+      var proto = EvEmitter.prototype;
+      proto.on = function(eventName, listener) {
+        if (!eventName || !listener) return;
+        var events = this._events = this._events || {};
+        var listeners = events[eventName] = events[eventName] || [];
+        if (listeners.indexOf(listener) == -1) listeners.push(listener);
+        return this;
+      };
+      proto.off = function(eventName, listener) {
+        var listeners = this._events && this._events[eventName];
+        if (!listeners || !listeners.length) return;
+        var index = listeners.indexOf(listener);
+        if (index != -1) listeners.splice(index, 1);
+        return this;
+      };
+      proto.emitEvent = function(eventName, args) {
+        var listeners = this._events && this._events[eventName];
+        if (!listeners || !listeners.length) return;
+        listeners = listeners.slice(0);
+        args = args || [];
+        for (var i = 0; i < listeners.length; i++) {
+          listeners[i].apply(this, args);
         }
-      })(typeof window != "undefined" ? window : exports, function() {
-        "use strict";
-        function EvEmitter() {
-        }
-        var proto = EvEmitter.prototype;
-        proto.on = function(eventName, listener) {
-          if (!eventName || !listener) {
-            return;
-          }
-          var events = this._events = this._events || {};
-          var listeners = events[eventName] = events[eventName] || [];
-          if (listeners.indexOf(listener) == -1) {
-            listeners.push(listener);
-          }
-          return this;
-        };
-        proto.once = function(eventName, listener) {
-          if (!eventName || !listener) {
-            return;
-          }
-          this.on(eventName, listener);
-          var onceEvents = this._onceEvents = this._onceEvents || {};
-          var onceListeners = onceEvents[eventName] = onceEvents[eventName] || {};
-          onceListeners[listener] = true;
-          return this;
-        };
-        proto.off = function(eventName, listener) {
-          var listeners = this._events && this._events[eventName];
-          if (!listeners || !listeners.length) {
-            return;
-          }
-          var index = listeners.indexOf(listener);
-          if (index != -1) {
-            listeners.splice(index, 1);
-          }
-          return this;
-        };
-        proto.emitEvent = function(eventName, args) {
-          var listeners = this._events && this._events[eventName];
-          if (!listeners || !listeners.length) {
-            return;
-          }
-          listeners = listeners.slice(0);
-          args = args || [];
-          var onceListeners = this._onceEvents && this._onceEvents[eventName];
-          for (var i = 0; i < listeners.length; i++) {
-            var listener = listeners[i];
-            var isOnce = onceListeners && onceListeners[listener];
-            if (isOnce) {
-              this.off(eventName, listener);
-              delete onceListeners[listener];
-            }
-            listener.apply(this, args);
-          }
-          return this;
-        };
-        proto.allOff = function() {
-          delete this._events;
-          delete this._onceEvents;
-        };
-        return EvEmitter;
-      });
+        return this;
+      };
+      module.exports = EvEmitter;
     }
   });
 
@@ -265,7 +224,7 @@ var Masonry = (() => {
           );
         } else if (typeof module == "object" && module.exports) {
           module.exports = factory(
-            require_ev_emitter(),
+            require_ev_emitter_shim(),
             require_get_size_shim()
           );
         } else {
@@ -548,7 +507,7 @@ var Masonry = (() => {
         } else if (typeof module == "object" && module.exports) {
           module.exports = factory(
             window2,
-            require_ev_emitter(),
+            require_ev_emitter_shim(),
             require_get_size_shim(),
             require_utils(),
             require_item()
@@ -743,25 +702,7 @@ var Masonry = (() => {
           this.element.style[isWidth ? "width" : "height"] = measure + "px";
         };
         proto._emitCompleteOnItems = function(eventName, items) {
-          var _this = this;
-          function onComplete() {
-            _this.dispatchEvent(eventName + "Complete", null, [items]);
-          }
-          var count = items.length;
-          if (!items || !count) {
-            onComplete();
-            return;
-          }
-          var doneCount = 0;
-          function tick() {
-            doneCount++;
-            if (doneCount == count) {
-              onComplete();
-            }
-          }
-          items.forEach(function(item) {
-            item.once(eventName, tick);
-          });
+          this.dispatchEvent(eventName + "Complete", null, [items]);
         };
         proto.dispatchEvent = function(type, event, args) {
           var emitArgs = event ? [event].concat(args) : args;
