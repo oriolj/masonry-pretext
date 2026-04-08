@@ -44,13 +44,30 @@ const banner = bannerMatch[0]
   .replace('https://masonry.desandro.com', 'https://github.com/oriolj/masonry-pretext');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Entry — virtual stdin so we don't need a separate entry file in the repo.
-// jquery-bridget was removed in improvement 006; the entry is now just the
+// Entries — virtual stdin so we don't need separate entry files in the repo.
+// jquery-bridget was removed in improvement 006; entries are just the
 // masonry source, with no jQuery shim.
+//
+// We ship three formats for three different consumer styles (#013, § 2.2):
+//   • IIFE — `<script src="masonry.pkgd.min.js">` drop-in, exposes `Masonry`
+//     as a top-level `var`. Two flavors (`pkgd.js` unminified, `pkgd.min.js`
+//     minified) since browser users have no bundler to minify for them.
+//   • CJS  — `require('masonry-pretext')` from Node / webpack 4 / older
+//     toolchains. Emits `module.exports = factory(...)`.
+//   • ESM  — `import Masonry from 'masonry-pretext'` from Vite / Rollup /
+//     esbuild / webpack 5 / Node ESM. Emits `export default Masonry`.
+//
+// CJS/ESM are not pre-minified: consumers' bundlers minify the final output,
+// so shipping a minified library bloats their source maps for no win.
 // ─────────────────────────────────────────────────────────────────────────────
-const entryContents = `
+const cjsEntryContents = `
 'use strict';
 module.exports = require(${JSON.stringify(path.join(ROOT, 'masonry.js'))});
+`;
+
+const esmEntryContents = `
+import Masonry from ${JSON.stringify(path.join(ROOT, 'masonry.js'))};
+export default Masonry;
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -499,23 +516,59 @@ const matchesSelectorShimPlugin = {
   },
 };
 
-const sharedConfig = {
-  stdin: {
-    contents: entryContents,
-    resolveDir: ROOT,
-    sourcefile: 'masonry-pkgd-entry.cjs',
-    loader: 'js',
-  },
+// Base config shared by every output format. Format-specific bits
+// (`format`, `globalName`, `stdin`, `outfile`, `minify`) are layered on top.
+const baseConfig = {
   bundle: true,
-  format: 'iife',
-  globalName: 'Masonry',
   platform: 'browser',
   // Browser support baseline per FORK_ROADMAP.md "Browser support cuts".
+  // The CJS/ESM bundles also load fine in Node ≥ 18 because every UMD-wrapper
+  // dep is patched for SSR safety in DEP_FILE_PATCHES (#005).
   target: ['chrome84', 'firefox86', 'safari15', 'edge84'],
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
   plugins: [matchesSelectorShimPlugin, depFilePatchesPlugin],
+};
+
+const iifeSharedConfig = {
+  ...baseConfig,
+  stdin: {
+    contents: cjsEntryContents,
+    resolveDir: ROOT,
+    sourcefile: 'masonry-pkgd-entry.cjs',
+    loader: 'js',
+  },
+  format: 'iife',
+  globalName: 'Masonry',
+};
+
+const cjsConfig = {
+  ...baseConfig,
+  stdin: {
+    contents: cjsEntryContents,
+    resolveDir: ROOT,
+    sourcefile: 'masonry-cjs-entry.cjs',
+    loader: 'js',
+  },
+  format: 'cjs',
+  outfile: path.join(DIST, 'masonry.cjs'),
+  // Bundlers minify for the consumer; shipping a minified library inflates
+  // their source maps without changing what the user actually downloads.
+  minify: false,
+};
+
+const esmConfig = {
+  ...baseConfig,
+  stdin: {
+    contents: esmEntryContents,
+    resolveDir: ROOT,
+    sourcefile: 'masonry-esm-entry.mjs',
+    loader: 'js',
+  },
+  format: 'esm',
+  outfile: path.join(DIST, 'masonry.mjs'),
+  minify: false,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -528,22 +581,31 @@ const t0 = performance.now();
 
 await Promise.all([
   esbuild.build({
-    ...sharedConfig,
+    ...iifeSharedConfig,
     outfile: path.join(DIST, 'masonry.pkgd.js'),
     minify: false,
   }),
   esbuild.build({
-    ...sharedConfig,
+    ...iifeSharedConfig,
     outfile: path.join(DIST, 'masonry.pkgd.min.js'),
     minify: true,
   }),
+  esbuild.build(cjsConfig),
+  esbuild.build(esmConfig),
 ]);
 
 const elapsed = performance.now() - t0;
-const pkgdSize = (await stat(path.join(DIST, 'masonry.pkgd.js'))).size;
-const minSize = (await stat(path.join(DIST, 'masonry.pkgd.min.js'))).size;
+const sizes = await Promise.all(
+  [
+    'masonry.pkgd.js',
+    'masonry.pkgd.min.js',
+    'masonry.cjs',
+    'masonry.mjs',
+  ].map(async (name) => [name, (await stat(path.join(DIST, name))).size]),
+);
 
 console.log('');
 console.log(`built in ${elapsed.toFixed(1)}ms`);
-console.log(`  dist/masonry.pkgd.js      ${pkgdSize.toString().padStart(7)} B`);
-console.log(`  dist/masonry.pkgd.min.js  ${minSize.toString().padStart(7)} B`);
+for (const [name, size] of sizes) {
+  console.log(`  dist/${name.padEnd(18)} ${size.toString().padStart(7)} B`);
+}

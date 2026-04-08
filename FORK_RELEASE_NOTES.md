@@ -17,6 +17,74 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.13 — 2026-04-08 — Real ESM + CJS bundle outputs (§ 2.2)
+
+> Tag: `v5.0.0-dev.13` · Improvement: [`013-esm-cjs-builds.md`](./improvements/013-esm-cjs-builds.md) · **Closes upstream**: none directly, but unblocks every modern-bundler consumer
+
+### Headline
+
+**`import` and `require` actually work now.** Every dev tag through `v5.0.0-dev.12` shipped a `package.json` `exports` field that pointed `import`, `require`, and `default` at `dist/masonry.pkgd.min.js`, which is `format: 'iife'` — a bare `var Masonry = (() => { … })()` with **no module exports of any kind**. `await import('masonry-pretext')` from any modern bundler (Vite, Rollup, esbuild, webpack 5, Astro, Next.js, Nuxt, SvelteKit) resolved to `default = undefined`, and consumers got `TypeError: Masonry is not a constructor`. The IIFE bundle worked for `<script src="…">` browser drop-in but broke every other path. This release ships the real fix.
+
+### Added
+
+- **`dist/masonry.cjs`** — CommonJS bundle, ~48 KB raw / ~9.5 KB gz / 1456 lines. `module.exports = Masonry`. Resolved by Node `require()`, webpack 4, and any tool that prefers CJS.
+- **`dist/masonry.mjs`** — ES module bundle, ~50 KB raw / ~10 KB gz / 1480 lines. `export default Masonry`. Resolved by Vite, Rollup, esbuild, webpack 5, Astro, Next.js 13+, Nuxt 3, SvelteKit, and any tool reading the `import` condition.
+- **`./browser` + `./browser/unminified` subpath exports** in `package.json` so consumers can explicitly reach the IIFE bundle by name (`import 'masonry-pretext/browser'`) instead of digging into `node_modules/`.
+- **`test/visual/module-smoke.mjs`** — new smoke test that loads `dist/masonry.cjs` via Node `require()` and `dist/masonry.mjs` via dynamic `import()`, then asserts both expose a constructor with `prototype.layout`. Runs as part of `make test`. Distinct from `ssr-smoke.mjs` (which only validates SSR safety of the IIFE bundle in `vm.runInContext`).
+- **`test:modules` npm script** for running `module-smoke.mjs` standalone.
+
+### Changed
+
+- **`package.json` `main`** — `./dist/masonry.pkgd.min.js` → `./dist/masonry.cjs`
+- **`package.json` `module`** — `./dist/masonry.pkgd.min.js` → `./dist/masonry.mjs`
+- **`package.json` `exports['.']`**:
+  - `import` — `./dist/masonry.pkgd.min.js` → `./dist/masonry.mjs`
+  - `require` — `./dist/masonry.pkgd.min.js` → `./dist/masonry.cjs`
+  - `default` — `./dist/masonry.pkgd.min.js` → `./dist/masonry.mjs`
+- **`scripts/build.mjs`** — refactored shared config into `baseConfig` + `iifeSharedConfig` + new `cjsConfig` + new `esmConfig`; runs four esbuild builds in parallel instead of two; added size logging for the new files. Build time went from ~14 ms (2 outputs) to ~18 ms (4 outputs).
+- **`scripts/measure.sh`** — table now lists the new `dist/masonry.cjs` and `dist/masonry.mjs` rows alongside the IIFE bundles.
+- **`Makefile`** — `make test` (and `make test-update`) now runs `module-smoke.mjs` between the SSR smoke and the no-jquery check.
+
+### Unchanged (intentional)
+
+- **`dist/masonry.pkgd.js` and `dist/masonry.pkgd.min.js`** — same byte count as dev.12 (the only diff is the embedded version string in the banner header, `v5.0.0-dev.12` → `v5.0.0-dev.13`, same length). The visual regression suite still loads the minified IIFE via `<script>`, and the existing CDN-style `<script src="…">` consumption path is preserved.
+- **`./source` and `./unminified` subpath exports** — kept for backwards compat with anyone who pinned to dev.11/dev.12 and used those paths.
+- **No source code changes.** `masonry.js` is byte-identical. The fix is entirely in build outputs and packaging metadata.
+
+### Why this is § 2.2 of the roadmap, not a hotfix
+
+The original Tier 0 packaging fix (improvement #011) explicitly noted that the full ESM build was "still pending" and acknowledged the `import`/`require` conditions were pointing at the IIFE as a temporary placeholder. § 2.2 of `FORK_ROADMAP.md` is the planned scope for shipping real ESM + CJS bundles. This improvement closes that planned scope; the Tier 0 fix in #011 stopped halfway because it was trying to be source-change-free.
+
+### Migration
+
+- **No action needed for `<script>` tag users.** `dist/masonry.pkgd.{js,min.js}` are unchanged.
+- **No action needed for npm consumers either** — `import 'masonry-pretext'` and `require('masonry-pretext')` will now resolve to the new bundles automatically. The previously-broken consumers start working without any code changes on their end.
+- **If you were already pinning to a subpath** (`masonry-pretext/source` or `masonry-pretext/unminified`) — those still work, byte-identically.
+- **If you want to keep using the IIFE bundle from a bundler context** for some reason — use the new explicit subpath: `import 'masonry-pretext/browser'`. (Almost certainly a sign that something else is wrong, but the escape hatch is there.)
+
+### Numbers
+
+| File                       |     pre-013 |    post-013 | Δ          |
+| ---                        |         ---:|         ---:| ---        |
+| `dist/masonry.pkgd.js`     |      52,126 |      52,126 | **0**      |
+| `dist/masonry.pkgd.min.js` |      22,984 |      22,984 | **0**      |
+| `dist/masonry.cjs`         |    (absent) |      49,099 | **+49 KB** |
+| `dist/masonry.mjs`         |    (absent) |      50,288 | **+50 KB** |
+| Test gates                 | 7 + ✓ + ✓   | 7 + ✓ + ✓ + ✓ | +1 (module-smoke) |
+| Bundle outputs             |           2 |           4 | +2         |
+| Modern-bundler consumers   | **broken**  | **works**   | ✅          |
+
+The new files add ~100 KB raw / ~20 KB gz to the **published tarball**, but **zero** to what consumers ship in their final bundles — modern bundlers tree-shake into a single output and only one of CJS/ESM gets pulled in (depending on resolver), not both.
+
+### Predicted vs actual
+
+Predicted: two new bundles (~48 + ~50 KB raw), 7+✓+✓+✓ tests, IIFE byte-identical, downstream consumer works.
+Actual: 49,099 + 50,288 B raw, 7+✓+✓+✓ tests, IIFE byte-identical (52,126 / 22,984), downstream `enacast-astro` consumer works.
+
+✅ **Match.**
+
+---
+
 ## v5.0.0-dev.12 — 2026-04-08 — Per-item ResizeObserver auto-relayout (§ P.1b)
 
 > Tag: `v5.0.0-dev.12` · Improvement: [`012-per-item-resize-observer.md`](./improvements/012-per-item-resize-observer.md) · **Closes upstream**: [`#1147`](https://github.com/desandro/masonry/issues/1147) + 7 duplicates ([`#1185`](https://github.com/desandro/masonry/issues/1185), [`#1158`](https://github.com/desandro/masonry/issues/1158), [`#1152`](https://github.com/desandro/masonry/issues/1152), [`#1108`](https://github.com/desandro/masonry/issues/1108), [`#1165`](https://github.com/desandro/masonry/issues/1165), [`#1189`](https://github.com/desandro/masonry/issues/1189), [`#1199`](https://github.com/desandro/masonry/issues/1199))

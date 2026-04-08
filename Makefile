@@ -44,12 +44,16 @@ test: build
 	@echo
 	@node test/visual/ssr-smoke.mjs
 	@echo
+	@node test/visual/module-smoke.mjs
+	@echo
 	@node test/visual/no-jquery.mjs
 
 test-update: build
 	@node test/visual/run.mjs --update
 	@echo
 	@node test/visual/ssr-smoke.mjs
+	@echo
+	@node test/visual/module-smoke.mjs
 	@echo
 	@node test/visual/no-jquery.mjs
 

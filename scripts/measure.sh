@@ -118,6 +118,8 @@ printf '  %-32s  %10s  %10s  %10s  %8s\n' "----" "---" "----" "------" "-----"
 file_row "masonry.js (source)"            masonry.js
 file_row "dist/masonry.pkgd.js"           dist/masonry.pkgd.js
 file_row "dist/masonry.pkgd.min.js"       dist/masonry.pkgd.min.js
+file_row "dist/masonry.cjs"               dist/masonry.cjs
+file_row "dist/masonry.mjs"               dist/masonry.mjs
 printf '\n'
 
 # ---- save -------------------------------------------------------------------
