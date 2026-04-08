@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.32
+ * Masonry PACKAGED v5.0.0-dev.33
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1291,7 +1291,12 @@ var require_masonry = __commonJS({
         return size;
       };
       proto._getContainerFitWidth = function() {
-        return computeFitContainerWidth(this.cols, this.colYs, this.columnWidth, this.gutter);
+        var fitWidth = computeFitContainerWidth(this.cols, this.colYs, this.columnWidth, this.gutter);
+        var parent = this.element.parentNode;
+        if (parent && typeof parent.clientWidth === "number" && parent.clientWidth > 0) {
+          return Math.min(fitWidth, parent.clientWidth);
+        }
+        return fitWidth;
       };
       proto.needsResizeLayout = function() {
         var previousWidth = this.containerWidth;

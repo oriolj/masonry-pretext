@@ -685,7 +685,17 @@
   };
 
   proto._getContainerFitWidth = function() {
-    return computeFitContainerWidth( this.cols, this.colYs, this.columnWidth, this.gutter );
+    var fitWidth = computeFitContainerWidth( this.cols, this.colYs, this.columnWidth, this.gutter );
+    // #033 / item J — cap fitWidth at parent's clientWidth so a narrow
+    // parent (e.g., one with `max-width`) doesn't get a wider grid that
+    // overflows. Closes desandro/masonry#1129. clientWidth respects
+    // max-width on the parent transitively because the layout engine
+    // applies the constraint before computing client dimensions.
+    var parent = this.element.parentNode;
+    if ( parent && typeof parent.clientWidth === 'number' && parent.clientWidth > 0 ) {
+      return Math.min( fitWidth, parent.clientWidth );
+    }
+    return fitWidth;
   };
 
   proto.needsResizeLayout = function() {
