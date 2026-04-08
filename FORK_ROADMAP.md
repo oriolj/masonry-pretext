@@ -812,7 +812,7 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | F1 | Document fork direction (README, CLAUDE, ROADMAP, RELEASE_NOTES, improvements/) | — | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | |
 | F2 | Add `scripts/measure.sh` + `metrics/history.tsv` | § Methodology | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | hermetic byte counts |
 | 1 | Modern test runner + CI | § 3.2 | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | custom Playwright runner; 4 fixtures passing |
-| 2 | esbuild build | § 2.1 | ⬜ | | replaces broken gulp 3 toolchain |
+| 2 | esbuild build | § 2.1 | ⚠️ `v5.0.0-dev.2` | [002-esbuild-build.md](./improvements/002-esbuild-build.md) | **17 ms build (~500× faster)**; min.js gz +7.1 % (recoverable in L.1–L.4) |
 | 3 | Delete `bower.json` + `composer.json` | § 2.6 | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | + dead gulp/jshint/qunit toolchain |
 | 3b | Rename package to `masonry-pretext`, bump to 5.0.0-dev | § 2.6 (extension) | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | **−97% `npm install` (349 → 10 pkgs)** |
 | 4a | Delete `matchesSelector` polyfill | § L.1 | ⬜ | | Element.matches universal since 2014 |

@@ -27,6 +27,7 @@ User-visible wins that have already landed in the fork. Each entry links to the 
 | Tag | What you get | Number |
 |---|---|---|
 | `v5.0.0-dev.1` | **97% smaller `npm install`.** Dropped the broken Gulp 3 + JSHint + RequireJS + QUnit + Bower toolchain. `npm install` goes from **349 → 10 packages** (the original devDeps had multiple unmaintained packages with open security advisories that will never be patched). See [`improvements/001-foundation-cleanup.md`](./improvements/001-foundation-cleanup.md). |
+| `v5.0.0-dev.2` | **The build actually runs again.** The upstream Gulp 3 build has been broken on Node ≥ 17 since ~2020. Replaced with a single ~120-line esbuild script that produces the same `dist/masonry.pkgd.js` + `dist/masonry.pkgd.min.js` artifacts in **17 ms** (vs gulp's previously-multi-second build, ~500× faster). Source unchanged, behavior verified by 4/4 visual regression tests. **Trade-off:** the minified bundle is +0.83 % raw / +7.1 % gzipped vs the upstream frozen file because of esbuild's CommonJS runtime helper — that cost is recoverable as later improvements delete dead code. Full numbers + the surprise that jquery-bridget secretly bundles all of jQuery in [`improvements/002-esbuild-build.md`](./improvements/002-esbuild-build.md). |
 
 ### Maintenance & contributions
 

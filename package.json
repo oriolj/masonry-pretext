@@ -1,19 +1,21 @@
 {
   "name": "masonry-pretext",
-  "version": "5.0.0-dev.1",
+  "version": "5.0.0-dev.2",
   "description": "Cascading grid layout library — modernized fork of masonry-layout with reflow-free text measurement via pretext.",
   "main": "masonry.js",
-  "type": "module",
   "dependencies": {
     "get-size": "^2.0.2",
     "outlayer": "^2.1.0"
   },
   "devDependencies": {
     "@playwright/test": "1.49.1",
+    "esbuild": "0.24.0",
+    "jquery-bridget": "2.0.1",
     "pixelmatch": "7.1.0",
     "pngjs": "7.0.0"
   },
   "scripts": {
+    "build": "node scripts/build.mjs",
     "test": "node test/visual/run.mjs",
     "test:visual": "node test/visual/run.mjs",
     "test:visual:update": "node test/visual/run.mjs --update",
