@@ -140,6 +140,29 @@ export interface MasonryOptions {
   static?: boolean;
 
   /**
+   * **Auto-relayout on direct DOM mutations.** When enabled, masonry
+   * watches the grid container for child additions/removals via
+   * `MutationObserver` and automatically calls `reloadItems()` +
+   * `layout()` when items are added or removed via direct DOM
+   * manipulation (`grid.appendChild`, `child.remove()`, etc.).
+   *
+   * Removes the "I called `grid.appendChild` and the new item didn't
+   * show up" footgun. Without this option, users must remember to
+   * call `msnry.appended(elem)` / `msnry.prepended(elem)` /
+   * `msnry.remove(elem)` after every DOM change.
+   *
+   * Coalesces via `requestAnimationFrame` so multiple appends in the
+   * same task collapse to a single layout call. Cleaned up
+   * automatically on `destroy()`. Skipped in `static: true` mode.
+   *
+   * Default `false` to preserve byte budget for users who already
+   * call the explicit API correctly.
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/031-mutation-observer-auto-relayout.md
+   */
+  observeMutations?: boolean;
+
+  /**
    * **`masonry-pretext` headline feature.** If set and returns a size,
    * that size is used as `item.size` and `item.getSize()` (which forces
    * a DOM reflow) is skipped entirely. Designed for use with

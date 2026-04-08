@@ -180,6 +180,25 @@ const cases = [
       { left: '0px', top: '90px' }, // discriminating: stays at x=0 (not 0 in row 2)
     ],
   },
+  {
+    // MutationObserver auto-relayout (#031 / item K) — see
+    // test/visual/pages/mutation-observer.html for the discriminator design.
+    // Container has 4 items initially; a 5th is appended via grid.appendChild
+    // AFTER masonry constructs. With observeMutations: true the MutationObserver
+    // detects the childList change and schedules reloadItems + layout via rAF
+    // coalescing. The 5th item lands at (60, 30) — the leftmost shortest col
+    // among (60, 30, 30) for cols 0/1/2.
+    name: 'mutation-observer',
+    page: 'mutation-observer.html',
+    container: '#mutation-observer',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '0px',   top: '30px' },
+      { left: '60px',  top: '30px' }, // discriminating: 5th item via grid.appendChild
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

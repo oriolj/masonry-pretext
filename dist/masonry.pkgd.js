@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.30
+ * Masonry PACKAGED v5.0.0-dev.31
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1125,6 +1125,20 @@ var Masonry = (() => {
               this._observeItemElement(this.items[i].element);
             }
           }
+          if (!this.options.static && this.options.observeMutations && typeof MutationObserver !== "undefined") {
+            var self3 = this;
+            var pendingMutationRaf = null;
+            this._mutationObserver = new MutationObserver(function() {
+              if (pendingMutationRaf !== null) return;
+              pendingMutationRaf = requestAnimationFrame(function() {
+                pendingMutationRaf = null;
+                if (self3._destroyed) return;
+                self3.reloadItems();
+                self3.layout();
+              });
+            });
+            this._mutationObserver.observe(this.element, { childList: true });
+          }
         };
         proto._observeItemElement = function(elem) {
           var rect = elem.getBoundingClientRect();
@@ -1156,6 +1170,10 @@ var Masonry = (() => {
           if (this._resizeObserver) {
             this._resizeObserver.disconnect();
             this._resizeObserver = null;
+          }
+          if (this._mutationObserver) {
+            this._mutationObserver.disconnect();
+            this._mutationObserver = null;
           }
           return baseDestroy.call(this);
         };

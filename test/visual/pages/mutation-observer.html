@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: mutation observer (#031 / item K)</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for `observeMutations` (#031 / item K).
+    Same shape as resize-observer.html and static-mode.html: 4 items
+    initially, then a 5th item is appended via DIRECT DOM MANIPULATION
+    (grid.appendChild) AFTER masonry has constructed.
+
+    With `observeMutations: true` the MutationObserver detects the
+    childList change, schedules a relayout via rAF coalescing, and the
+    new item gets positioned. Item 4 (the appended one) lands at
+    (0, 30) — the position masonry computes for a 5th item in a 3-col
+    layout where the first 3 items are at 60×30 and item 3 (col 0)
+    already has Y=30 (no, wait — item 3 lands at col 0 row 2 (0, 30),
+    item 4 the new one lands at col 1 row 2 (60, 30)).
+
+    Layout trace:
+      cols=3, colYs=[0,0,0]
+      item 0: 60×30, col 0, y=0, colYs=[30,0,0]
+      item 1: 60×30, col 1, y=0, colYs=[30,30,0]
+      item 2: 60×30, col 2, y=0, colYs=[30,30,30]
+      item 3: 60×30, col 0 (leftmost shortest), y=30, colYs=[60,30,30]
+      item 4 (appended): col 1 (leftmost shortest among 30/30 ties),
+                         y=30, colYs=[60,60,30]
+
+    If observeMutations is wired correctly, masonry detects the append
+    and item 4 ends up at (60, 30).
+    If broken, item 4 has no inline style.left/top from masonry — the
+    test asserts left='60px' top='30px' which fails.
+  -->
+  <div id="mutation-observer" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#mutation-observer');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+      observeMutations: true,
+    });
+
+    // Append a 5th item via direct DOM manipulation (NOT via
+    // masonry.appended). This is the "footgun" case the option is
+    // meant to fix — users naturally call grid.appendChild instead
+    // of masonry.appended.
+    var newItem = document.createElement('div');
+    newItem.className = 'item';
+    grid.appendChild(newItem);
+
+    // Wait several rAF ticks for the MutationObserver → rAF →
+    // reloadItems → layout pipeline to complete.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          window.__READY = true;
+        });
+      });
+    });
+  </script>
+
+</body>
+</html>

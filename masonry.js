@@ -410,6 +410,30 @@
         this._observeItemElement( this.items[i].element );
       }
     }
+    // ── #031 — MutationObserver auto-relayout (§ P.2 / item K) ──────────
+    // Opt-in via `options.observeMutations: true`. When children are added
+    // to or removed from the grid container via DIRECT DOM MANIPULATION
+    // (not via masonry.appended/prepended/remove), masonry detects the
+    // change and reloads + relayouts automatically. Closes the dominant
+    // non-image upstream complaint cluster — "I called grid.appendChild
+    // and the new item didn't show up." Coalesces via requestAnimationFrame
+    // so multiple appends in the same task collapse to a single layout call.
+    // SSR-safe via typeof guard. Skipped in static mode.
+    if ( !this.options.static && this.options.observeMutations &&
+         typeof MutationObserver !== 'undefined' ) {
+      var self3 = this;
+      var pendingMutationRaf = null;
+      this._mutationObserver = new MutationObserver( function() {
+        if ( pendingMutationRaf !== null ) return;
+        pendingMutationRaf = requestAnimationFrame( function() {
+          pendingMutationRaf = null;
+          if ( self3._destroyed ) return;
+          self3.reloadItems();
+          self3.layout();
+        });
+      });
+      this._mutationObserver.observe( this.element, { childList: true });
+    }
   };
 
   // Helper used by both _create's initial loop and the _itemize override.
@@ -449,12 +473,16 @@
     return baseRemove.call( this, elems );
   };
 
-  // Disconnect the ResizeObserver on destroy.
+  // Disconnect ResizeObserver (#012) and MutationObserver (#031) on destroy.
   var baseDestroy = proto.destroy;
   proto.destroy = function() {
     if ( this._resizeObserver ) {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
+    }
+    if ( this._mutationObserver ) {
+      this._mutationObserver.disconnect();
+      this._mutationObserver = null;
     }
     return baseDestroy.call( this );
   };
