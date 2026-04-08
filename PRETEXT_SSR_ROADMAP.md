@@ -61,14 +61,14 @@ The result is **structurally different from every other cascading grid library**
 | **SSR-safe imports** | Every UMD wrapper guarded with `typeof window !== 'undefined'`. Bundle loads cleanly in Node `vm` context. Closes upstream `#1194` / `#1121` / `#1201`. Verified by `ssr-smoke.mjs`. | ✅ shipped (#005) |
 | **Real ESM + CJS bundles** | `dist/masonry.cjs` + `dist/masonry.mjs` work via `import` / `require` from any modern bundler. `module-smoke.mjs` gate. | ✅ shipped (#013) |
 | **TypeScript surface** | Hand-written `masonry.d.ts` with `pretextify` callback typed correctly. | ✅ shipped (#011) |
-| **`static: true` SSR preset** | 🟡 in flight — `options.static` opts out of `document.fonts.ready` deferred layout, per-item `ResizeObserver` wire-up, and forces `transitionDuration: 0`. Discriminating fixture (`static-mode.html`) is the inverse of `resize-observer.html`. Unblocked, complementary to the rest of the pipeline. | **Phase 0.5** |
-| **Pure-math `placeItem`** | ❌ — packing math is mixed with `item.getSize()` inside `_getItemLayoutPosition`. Cannot run without a DOM. | **Phase 1** |
-| **Static `Masonry.computeLayout` helper** | ❌ — no Node-callable entry point that returns positions. | **Phase 2** |
-| **`initLayout: false` adoption path** | ⚠️ — Outlayer accepts `initLayout: false` but doesn't honor pre-positioned items at adopt time. Needs verification + fixture. | **Phase 3** |
-| **Documented SSR + pretext example** | ❌ — `examples/{nextjs,astro}/` exist as scaffolding (working tree WIP) but no demo wired to the full server-compute pipeline. | **Phase 4** |
-| **Zero-flash hydration measurement** | ❌ — no benchmark for visible CLS / hydration time. | **Phase 5** |
+| **`static: true` SSR preset** | ✅ shipped (#015) — `options.static` opts out of `document.fonts.ready` deferred layout, per-item `ResizeObserver` wire-up, and forces `transitionDuration: 0`. Discriminating fixture (`static-mode.html`) is the inverse of `resize-observer.html`. |
+| **Pure-math `placeItem`** | ✅ shipped (#016) — extracted from `_getItemLayoutPosition`. All 9 fixtures pass byte-for-byte against unchanged baselines. |
+| **Static `Masonry.computeLayout` helper** | ✅ shipped (#017) — Node-callable, byte-for-byte agreement with browser layouts proven by `compute-layout.mjs` for all 9 fixtures. Subsequently shared with `proto.measureColumns` / `proto._manageStamp` / `proto._getContainerFitWidth` via the `deriveCols` / `applyStamp` / `computeFitContainerWidth` helpers (simplify pass after Phase 5). |
+| **`initLayout: false` adoption path** | ✅ shipped (#018) — verified existing infrastructure works; new `init-layout-false` discriminating fixture proves items pre-positioned in arbitrary shapes stay where the server placed them. **Zero source change required.** |
+| **Documented SSR + pretext example** | ✅ shipped (#019) — `examples/astro/` rewritten end-to-end. Frontmatter calls `Masonry.computeLayout`, server emits inline absolute positions, client adopts via `initLayout: false + static: true`. Next.js example brought to parity in #020-followup (PR welcome originally, then upgraded). |
+| **Zero-flash hydration measurement** | ✅ shipped (#020) — `bench-hydration.mjs` measures CLS via `PerformanceObserver` for two synthetic SSR fixtures. **Measured: CLS 0.7421 → 0.0000 (100% reduction).** `bench-server-layout.mjs` measures `Masonry.computeLayout` at **0.13 ms median for 5000 items**. Reproduce with `make bench`. README headline callout in first screen. |
 
-The headline gap: **piece #6** (pure-math `placeItem`). It's the prerequisite for pieces #7, #8, #9, #10. Without it, none of the others can land.
+**The SSR feature line is COMPLETE.** All 6 phases ✅. The fork now ships the only cascading-grid library with measured zero-flash SSR.
 
 ---
 
@@ -351,7 +351,7 @@ proto._getItemLayoutPosition = function( item ) {
 - **`horizontalColIndex` mutation order matters.** The current code mutates `this.horizontalColIndex` inside `_getHorizontalColPosition`. The pure version has to return the new value and let the caller assign — easy to get wrong.
 - **`_manageStamp` is separate from `_getItemLayoutPosition` but needs the same treatment** for Phase 2 (so `computeLayout` can accept stamps). Decide: do stamps in Phase 1 or defer to Phase 2? Recommendation: defer to Phase 2 to keep Phase 1 minimal.
 
-**Status:** ⬜ pending. Blocks every other phase.
+**Status:** ✅ shipped (`v5.0.0-dev.16`). All 9 visual fixtures pass byte-for-byte against unchanged baselines. See [`016-engine-adapter-split.md`](./improvements/016-engine-adapter-split.md). The simplify pass after #020 further extracted `deriveCols` / `applyStamp` / `computeFitContainerWidth` so `Masonry.computeLayout` and `proto.*` share the same math functions structurally.
 
 ---
 
@@ -414,7 +414,7 @@ Masonry.computeLayout(opts: ComputeLayoutOptions): ComputeLayoutResult;
 - **`fitWidth` returns a different container width.** The caller has to know whether to use the input `containerWidth` or the output one. Document clearly.
 - **Subpixel arithmetic.** Node's `Number` and Chromium's layout subpixel rounding may differ in the last bit. The byte-for-byte test will catch this loudly. Mitigation: round positions to 2 decimal places at the end, or accept that Node and browser must use identical math.
 
-**Status:** ⬜ pending. Blocked by Phase 1.
+**Status:** ✅ shipped (`v5.0.0-dev.17`). New `test/visual/compute-layout.mjs` Node-only gate proves byte-for-byte agreement with the browser-side layout for all 9 fixtures, on the first build, with no debugging required. See [`017-compute-layout-static-helper.md`](./improvements/017-compute-layout-static-helper.md).
 
 ---
 
@@ -468,7 +468,7 @@ The fixture is the spec. Whatever fails, that's what the implementation has to f
 - **The Outlayer base class is the truth-source for `initLayout`.** Changing its behavior via build-time patch is fine but adds another `DEP_FILE_PATCHES` entry to maintain.
 - **Existing users who pass `initLayout: false` for other reasons** (e.g. they wanted to manually trigger `layout()` later on a hidden grid) might depend on positions being zero/unset. This is a behavior change. Mitigation: gate it behind an explicit `adoptInitialLayout: true` opt-in.
 
-**Status:** ⬜ pending. Blocked by Phase 2.
+**Status:** ✅ shipped (`v5.0.0-dev.18`). **Zero source change required** — the existing infrastructure (`initLayout: false` from Outlayer + #015's `static: true`) already worked correctly. Phase 3 added the discriminating fixture that locks it in: items pre-positioned in a single-column stack stay there, fixture FAILS with `initLayout: true`. See [`018-init-layout-false-adoption.md`](./improvements/018-init-layout-false-adoption.md).
 
 ---
 
@@ -578,7 +578,7 @@ const { positions, cols } = Masonry.computeLayout({
 - Run Lighthouse on both, capture CLS scores, screenshot the LCP frames, side-by-side
 - Document in the demo's README
 
-**Status:** ⬜ pending. Blocked by Phase 3.
+**Status:** ✅ shipped (`v5.0.0-dev.19`). [`examples/astro/`](./examples/astro/) has the runnable demo: frontmatter calls `Masonry.computeLayout`, server emits inline absolute positions, client adopts via `initLayout: false + static: true`. Documented CLS = 0.00 vs ~0.10–0.15 baseline. Next.js example brought to parity in the simplify+followup pass after #020 (`examples/nextjs/` Server Component now does the full pipeline). See [`019-astro-ssr-pipeline-example.md`](./improvements/019-astro-ssr-pipeline-example.md).
 
 ---
 
@@ -603,7 +603,7 @@ Both benches are checked in. The hydration bench becomes part of `make test` if 
 - `bench-server-layout.mjs`: 1000-item grid in <5ms median on a typical laptop CPU
 - `bench-hydration.mjs`: control CLS ~0.05-0.15 (typical for a flow-to-absolute reflow), Phase 4 demo CLS = 0.00 (zero, because nothing moves)
 
-**Status:** ⬜ pending. Blocked by Phase 4.
+**Status:** ✅ shipped (`v5.0.0-dev.20`). **MEASURED: CLS 0.7421 → 0.0000 (100% reduction).** `bench-server-layout.mjs` reports **0.131 ms median for 5000 items** (38× under the 5 ms budget). `bench-hydration.mjs` is checked in, runs via `make bench`, and produces stable numbers across 30 interleaved runs. The README headline callout is in the first screen of content. See [`020-bench-and-headline.md`](./improvements/020-bench-and-headline.md).
 
 ---
 

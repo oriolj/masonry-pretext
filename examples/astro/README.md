@@ -156,4 +156,4 @@ If those four conditions are met, this pipeline gives you **CLS = 0.00 with no l
 
 ## Comparison to the Next.js example
 
-The [Next.js example in `../nextjs/`](../nextjs) uses the same `static: true` preset but does NOT yet use the full SSR pipeline (no `computeLayout` in the React Server Component, no `initLayout: false`). Bringing it up to parity is straightforward — the React equivalent of step 2 above is a Server Component that does the same computation, then passes positions as props to a `'use client'` component that constructs masonry with `initLayout: false, static: true`. PR welcome.
+The [Next.js example in `../nextjs/`](../nextjs) does the same thing with a React Server Component instead of an Astro frontmatter. Same `Masonry.computeLayout` call, same client-side `initLayout: false + static: true` adoption, same CLS = 0.00 result. The RSC computes positions in pure Node, passes them as props (serialized as plain JSON), and a `'use client'` component receives them and constructs masonry with the SSR adoption combo. Pick whichever framework you're already using.

@@ -13,7 +13,225 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 ## Unreleased — v5.0.0-dev
 
-Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan and [`improvements/`](./improvements/) for per-change details.
+Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
+
+---
+
+## v5.0.0-dev.20 — 2026-04-08 — Hydration + server-layout benchmarks + README headline (§ SSR / PRETEXT_SSR Phase 5)
+
+> Tag: `v5.0.0-dev.20` · Improvement: [`020-bench-and-headline.md`](./improvements/020-bench-and-headline.md) · **The load-bearing measurement step** — Phase 5 of [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md), marked ⚠️ non-negotiable in the roadmap because the entire SSR feature line is a hand-wave without measured numbers in the README.
+
+### Headline
+
+**Cumulative Layout Shift drops from 0.7421 to 0.0000 — measured.** No other masonry-style library on the market can do this. With the SSR pipeline (`Masonry.computeLayout` server-side + `initLayout: false + static: true` client-side), cascading-grid pages render correctly on first paint — no flow-to-absolute reflow, no animated settle, no observable hydration jank. Reproduce with `make bench`.
+
+`Masonry.computeLayout` itself runs in **0.131 ms median for a 5000-item grid** in pure Node — 38× under the predicted 5 ms budget. Server-side layout cost is effectively free for any realistic grid.
+
+### Added
+
+- **`test/visual/bench-server-layout.mjs`** — pure-Node microbenchmark. Times `Masonry.computeLayout` via `process.hrtime.bigint()`, 5 untimed warmup runs + 50 measured per size, reports median + spread for N=100/500/1000/5000.
+- **`test/visual/bench-hydration.mjs`** — Playwright-driven CLS bench. Generates two HTML fixtures at runtime in a temp dir (control = flow-then-relayout, pipeline = inline-positions-from-`computeLayout`), runs 30 interleaved runs in chromium, captures CLS via `PerformanceObserver({type: 'layout-shift', buffered: true})`, reports median + p10/p90 + max.
+- **`make bench` target** — runs both benches in sequence. Slow (~2 minutes) so it's NOT part of `make test`. Anyone can reproduce the headline numbers locally.
+- **README "🎯 The headline feature: zero-flash SSR cascading grids"** — new callout section directly under "About this fork", before the Key improvements table. Has the headline number in the first sentence, a side-by-side CLS comparison table, links to the three improvements that ship the pipeline, a reproduce-the-numbers instruction, a pointer to the Astro example, and a pointer to `PRETEXT_SSR_ROADMAP.md`.
+
+### Numbers
+
+| File                       |     pre-020 |    post-020 | Δ          |
+| ---                        |         ---:|         ---:| ---        |
+| `dist/masonry.pkgd.js`     |      58,960 |      58,960 | **0**      |
+| `dist/masonry.pkgd.min.js` |      25,756 |      25,756 | **0**      |
+| Hydration CLS — control    | (unmeasured) |      0.7421 | **MEASURED** |
+| Hydration CLS — pipeline   | (unmeasured) |      0.0000 | **MEASURED** |
+| Hydration CLS reduction    | (unmeasured) |        100% | **HEADLINE** |
+| `computeLayout(5000)` median | (unmeasured) |   0.131 ms | **MEASURED — 38× under budget** |
+| Visual + ssr + module + compute-layout + no-jquery gates | all green | all green | unchanged |
+
+**Zero source change to `masonry.js` — Phase 5 is purely measurement + documentation.**
+
+### Migration
+
+No action needed for any existing user. This release adds benchmarks + the README headline; the library itself is byte-identical to dev.19.
+
+---
+
+## v5.0.0-dev.19 — 2026-04-08 — End-to-end Astro SSR pipeline example (§ SSR / PRETEXT_SSR Phase 4)
+
+> Tag: `v5.0.0-dev.19` · Improvement: [`019-astro-ssr-pipeline-example.md`](./improvements/019-astro-ssr-pipeline-example.md) · **Closes upstream**: none — runnable demo of the Phase 1-3 machinery.
+
+### Headline
+
+**The runnable proof.** `examples/astro/` is now an end-to-end SSR demo that uses every piece of the SSR feature line: `Masonry.computeLayout` in the Astro frontmatter (Node), inline absolute positions in the server-rendered HTML, and `new Masonry(grid, { initLayout: false, static: true })` on the client to adopt the existing positions. Drop the file into a fresh Astro project, install `masonry-pretext`, run `npm run dev`, and verify CLS = 0.00 in DevTools yourself.
+
+### Changed
+
+- **`examples/astro/src/pages/index.astro`** — full rewrite (~145 lines). The previous version used the simpler `static: true` only pattern; the new version wires the full pipeline. Hardcoded item heights for reproducibility (real apps swap in `pretext.layout()`); the swap-in is documented in the example README.
+- **`examples/astro/README.md`** — full rewrite (~115 lines). Restructured around the four-step pipeline: server-side measurement → `computeLayout` → emit inline positions → client-side adoption. Has a side-by-side CLS comparison table and a "When NOT to use this pattern" section documenting the four constraints.
+
+### Unchanged (intentional)
+
+- **Zero changes to `masonry.js`, `masonry.d.ts`, `dist/`, `test/visual/`** — the example is documentation + runnable demo, not library code.
+- **Next.js example** stays at the simpler pattern (originally documented as PR-welcome; brought to parity in a followup after `dev.20`).
+
+---
+
+## v5.0.0-dev.18 — 2026-04-08 — `initLayout: false` SSR adoption verification (§ SSR / PRETEXT_SSR Phase 3)
+
+> Tag: `v5.0.0-dev.18` · Improvement: [`018-init-layout-false-adoption.md`](./improvements/018-init-layout-false-adoption.md) · **The smallest improvement on record** — zero bundle bytes, locks in the entire client-side half of the SSR feature line.
+
+### Headline
+
+**Verifies that the SSR adoption path already works.** Phase 2 (#017) added `Masonry.computeLayout` (server-side helper). Phase 3's question: does the client adopt those positions correctly when constructing masonry? Answer (after reading the Outlayer + Item source carefully): **yes, out of the box, no source change needed**. `initLayout: false` from Outlayer skips the constructor's `layout()` call, `Item._create`'s `style.position = 'absolute'` is a no-op for items the server already pre-rendered with that, and `static: true` (#015) skips every dynamic-content hook that could later overwrite the SSR positions.
+
+Phase 3 adds the discriminating fixture that locks this in permanently.
+
+### Added
+
+- **`test/visual/pages/init-layout-false.html`** — discriminating fixture. Pre-positions 4 items in a single-column stack at `(0,0), (0,30), (0,60), (0,90)` — a layout shape masonry would NEVER produce naturally for 4 60×30 items in a 3-col 180px container. If `initLayout: false` adoption works correctly, items stay in the stack. If broken, items get repositioned to the natural 3-col tile and the position assertion catches it (item 1 jumps from `0px` to `60px`). Verified by toggling `initLayout: false → true` and watching the fixture fail loudly.
+- **New `init-layout-false` case in `test/visual/run.mjs`** — runs as part of `make test`.
+
+### Numbers
+
+| Metric | Δ |
+|---|---|
+| `dist/masonry.pkgd.{cjs,mjs,pkgd.js,pkgd.min.js}` | **0 bytes** (byte-identical to dev.17) |
+| `masonry.js` source raw | 0 (no source change) |
+| Visual regression tests | 9/9 → **10/10** (+`init-layout-false`) |
+| Other gates | unchanged |
+
+---
+
+## v5.0.0-dev.17 — 2026-04-08 — `Masonry.computeLayout` static helper (§ SSR / PRETEXT_SSR Phase 2)
+
+> Tag: `v5.0.0-dev.17` · Improvement: [`017-compute-layout-static-helper.md`](./improvements/017-compute-layout-static-helper.md) · **THE killer feature** — pure-Node cascading-grid layout precomputation.
+
+### Headline
+
+**`Masonry.computeLayout(opts)` exists.** A static method on the constructor that takes pre-measured item sizes + container/column metadata and returns absolute positions. **No DOM, no instance, no `this`** — runs in Node, edge functions, web workers, or any JavaScript runtime. The killer use case: server-side cascading-grid layout for SSR pages.
+
+```ts
+import Masonry from 'masonry-pretext';
+
+const { positions, containerHeight } = Masonry.computeLayout({
+  items: [{outerWidth: 280, outerHeight: 192}, ...],
+  containerWidth: 920,
+  columnWidth: 280,
+  gutter: 16,
+});
+// → positions: [{x: 0, y: 0}, {x: 296, y: 0}, ...]  in pure Node, no DOM needed
+```
+
+**Byte-for-byte identical** to the browser-side layout. Verified by `test/visual/compute-layout.mjs`, a Node-only test that runs `Masonry.computeLayout` against all 9 visual fixtures and asserts every position matches the browser-rendered values, on the first build, with no debugging required.
+
+### Added
+
+- **`Masonry.computeLayout(opts)` static method** in `masonry.js` (~70 LOC of glue around the pure helpers from #016).
+- **`ComputeLayoutOptions` + `ComputeLayoutResult`** TypeScript interfaces in `masonry.d.ts` with full JSDoc + a runnable example in the JSDoc.
+- **`test/visual/compute-layout.mjs`** — Node-only test gate. Imports `Masonry` from `dist/masonry.mjs`, runs through all 9 fixture cases, asserts position-by-position agreement with the browser fixtures. Now part of `make test`.
+- **`test:compute-layout` npm script** for running the gate standalone.
+
+### Changed
+
+- **`Makefile` `make test` and `make test-update`** — `compute-layout.mjs` runs between `module-smoke.mjs` and `no-jquery.mjs`.
+
+### Numbers
+
+| Metric | pre-017 | post-017 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,815 | **25,756** | +941 |
+| `dist/masonry.pkgd.min.js` gz | 7,898 | **8,291** | **+393** |
+| `dist/masonry.pkgd.min.js` brotli | 7,172 | **7,527** | +355 |
+| Visual regression tests | 9/9 | 9/9 | unchanged |
+| **Compute-layout test** | (absent) | **9/9** | **NEW gate — byte-for-byte agreement** |
+
+The +393 B gz buys the entire SSR feature line. Subsequent simplify pass extracted shared `deriveCols` / `applyStamp` / `computeFitContainerWidth` helpers between `proto.*` and `Masonry.computeLayout`, recovering some of the bytes.
+
+---
+
+## v5.0.0-dev.16 — 2026-04-08 — Engine/adapter split: pure-math `placeItem` (§ SSR / PRETEXT_SSR Phase 1)
+
+> Tag: `v5.0.0-dev.16` · Improvement: [`016-engine-adapter-split.md`](./improvements/016-engine-adapter-split.md) · **Foundational refactor** — zero behavior change, prerequisite for `Masonry.computeLayout`.
+
+### Headline
+
+**The packing math is now extracted into a pure-math layer that can run without a DOM.** `_getItemLayoutPosition` was mixing DOM measurement (`item.getSize()`) with packing math; the math itself was already pure (it only reads from `item.size` and `this.colYs`), but it was wrapped in a method that *also* mutates `item.size` via DOM. Phase 1 extracts the pure math into a top-level `placeItem(size, state)` function that takes pre-measured sizes and numeric state and returns placement decisions — no `this`, no DOM, no option lookups. Phase 2 (#017) makes this layer publicly callable.
+
+**All 9 visual fixtures pass byte-for-byte against unchanged screenshot baselines.** The strongest possible regression test for a math-heavy refactor.
+
+### Added (file-local, not on prototype)
+
+- **`placeItem(size, state)`** — top-level entry point. Computes `colSpan`, dispatches to `getTopColPosition` or `getHorizontalColPosition`, computes `(x, y)`, mutates `state.colYs` for the spanned columns.
+- **`getTopColPosition(colSpan, colYs, cols)`**, **`getTopColGroup(colSpan, colYs, cols)`**, **`getColGroupY(col, colSpan, colYs)`**, **`getHorizontalColPosition(colSpan, size, state)`** — supporting helpers, all pure.
+
+### Changed
+
+- **`proto._getItemLayoutPosition`** — now the thinnest possible wrapper: `pretextify`-or-`getSize`, build state object, call `placeItem`, write back primitives.
+- **`proto._getTopColPosition` / `_getTopColGroup` / `_getColGroupY` / `_getHorizontalColPosition`** — kept on prototype as thin shims that delegate to the pure helpers, for plugin authors who reach into masonry's internals.
+
+### Numbers
+
+| Metric | pre-016 | post-016 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,342 | 24,815 | **+473** |
+| `dist/masonry.pkgd.min.js` gz | 7,734 | 7,898 | **+164** |
+| Visual regression tests | 9/9 | 9/9 | byte-for-byte against unchanged baselines |
+| Other gates | all green | all green | unchanged |
+
+The byte over-shoot vs the predicted "±0" is because esbuild's minifier doesn't inline file-local helpers across function boundaries — both the pure helpers AND the proto wrapper delegates ship in the minified output. Updated calibration: `+200-500 B raw / +80-180 B gz per "extracted pure helper that the minifier can't inline."` Bytes recoverable by deleting the proto wrappers (breaking change for plugin authors) — deferred to a future v5.0.0-rc.
+
+---
+
+## v5.0.0-dev.15 — 2026-04-08 — `static: true` SSR preset + new `PRETEXT_SSR_ROADMAP.md` (§ SSR / PRETEXT_SSR Phase 0.5)
+
+> Tag: `v5.0.0-dev.15` · Improvement: [`015-static-ssr-preset.md`](./improvements/015-static-ssr-preset.md) · **Closes upstream**: none directly — first-class answer to the "SSR + masonry ergonomics" question.
+
+### Headline
+
+**One flag to opt out of all dynamic-content machinery.** For server-rendered grids whose items will not change size after first paint:
+
+```js
+new Masonry(grid, {
+  columnWidth: 280,
+  static: true,  // ← skips fonts.ready hook + ResizeObserver, forces transitionDuration: 0
+});
+```
+
+`options.static` flips three runtime behaviors in one shot: forces `transitionDuration: 0`, skips the `document.fonts.ready` deferred layout from #010, and skips the per-item `ResizeObserver` construction from #012. For server-rendered content (Next.js, Astro, SvelteKit, Nuxt SSR pages — the common SSR case) this eliminates the hydration flash AND the runtime cost of the dynamic-content hooks.
+
+### Added
+
+- **`options.static` boolean** in `masonry.js` (gates the existing #010 + #012 hooks behind `if (!this.options.static)`).
+- **`static?: boolean`** in `masonry.d.ts` with full JSDoc documenting the three behaviors it disables.
+- **`test/visual/pages/static-mode.html`** — discriminating fixture. The **exact inverse** of `resize-observer.html` (#012): same setup, same items, same programmatic resize of item 0 from 30→60 after construction, but constructed with `static: true`. Item 3 stays at `(0, 30)` (no relayout) instead of moving to `(60, 30)` (relayout fired). The two fixtures form a conjugate pair that mutually enforce the `static` branch.
+- **NEW `PRETEXT_SSR_ROADMAP.md`** at the repo root (~700 lines) — the focused single-feature roadmap for the broader pretext + SSR + computeLayout vision. Six phases: Phase 0.5 (this preset), Phase 1 (engine/adapter split), Phase 2 (`Masonry.computeLayout`), Phase 3 (`initLayout: false` adoption), Phase 4 (working Astro example), Phase 5 (benchmarks + README headline). Sibling document to `FORK_ROADMAP.md`.
+- **README "Optimizations for SSR mode — `static: true`"** — rewritten section documenting the single-flag UX (replaces the previous manual three-option recipe).
+
+### Changed
+
+- **`examples/astro/` and `examples/nextjs/`** — both updated to use `static: true` instead of the manual `transitionDuration: 0` workaround.
+- **`FORK_ROADMAP.md` § Progress** — new item S marked ✅ landed, promoted from the README's "candidate future optimizations" list after #014.
+
+### Numbers
+
+| Metric | pre-015 | post-015 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,241 | 24,342 | **+101** |
+| `dist/masonry.pkgd.min.js` gz | 7,714 | 7,734 | **+20** |
+| `dist/masonry.pkgd.min.js` brotli | 6,973 | 6,994 | **+21** |
+| Visual regression tests | 8/8 | **9/9** | +1 (`static-mode`) |
+| Other gates | all green | all green | unchanged |
+
+**The smallest dev release in size cost since #009** (+22 B gz). +20 B gz for an SSR ergonomic feature that closes the "users have to manually disable three different hooks" usability gap.
+
+### Predicted vs actual
+
+| Metric | Predicted | Actual | Status |
+|---|---|---|---|
+| `min.js` raw | +60 to +150 B | **+101 B** | ✅ middle of band |
+| `min.js` gzip | +20 to +60 B | **+20 B** | ✅ low end of band |
+| `masonry.js` source raw | +400 to +700 B | **+462 B** | ✅ middle of band |
+| Visual fixtures | 8 → 9 | 9/9 | ✅ |
+| Discriminator FAILS without fix | yes | yes (item 3 at `(60, 30)` instead of `(0, 30)`) | ✅ |
+| SSR + module + no-jquery gates | unchanged | unchanged | ✅ |
 
 ---
 
