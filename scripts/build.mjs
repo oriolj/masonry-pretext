@@ -81,6 +81,151 @@ const jqueryStubPlugin = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// outlayer/item.js modern-browser transform (improvement 004 / roadmap § L.2)
+//
+// Strips the vendor-prefix detection block + every site that uses it from
+// `node_modules/outlayer/item.js`. This is dead code in 2026 — `transition`
+// and `transform` have been unprefixed in every browser since 2014, and the
+// browser support baseline (chrome84/firefox86/safari15/edge84) is well past
+// the point where vendor-prefix variants matter. The deleted code includes:
+//
+//   - `var docElemStyle = document.documentElement.style;` (the **first** line
+//     of the file's executable body — this is what blocks SSR `import`s of
+//     the bundled module by accessing `document` at module load. Removing it
+//     is necessary but NOT sufficient for SSR — the bundled IIFE still
+//     accesses `window.jQuery` from outlayer.js elsewhere; see roadmap § 2.2
+//     for the full fix.)
+//   - The `transitionProperty` / `transformProperty` / `vendorProperties` /
+//     `dashedVendorProperties` lookup tables.
+//   - The `onwebkitTransitionEnd` / `onotransitionend` legacy event handlers.
+//   - The `toDashedAll` helper that camelCased `WebkitTransform` to `-webkit-transform`.
+//   - Every consumer site (the `css` method, `enableTransition`,
+//     `ontransitionend`, `proto.remove`).
+//
+// All transformations are exact-string substitutions, NOT regex. If any
+// substitution fails to find its target the build aborts loudly — that
+// guards against silent breakage if `outlayer` is ever updated upstream
+// (which it hasn't been since 2018, but defense in depth is cheap).
+// ─────────────────────────────────────────────────────────────────────────────
+const OUTLAYER_ITEM_TRANSFORMS = [
+  // ── 1. Delete the vendor-prefix detection block + module-load DOM access ──
+  {
+    description: 'delete vendor-prefix detection block',
+    find: `var docElemStyle = document.documentElement.style;
+
+var transitionProperty = typeof docElemStyle.transition == 'string' ?
+  'transition' : 'WebkitTransition';
+var transformProperty = typeof docElemStyle.transform == 'string' ?
+  'transform' : 'WebkitTransform';
+
+var transitionEndEvent = {
+  WebkitTransition: 'webkitTransitionEnd',
+  transition: 'transitionend'
+}[ transitionProperty ];
+
+// cache all vendor properties that could have vendor prefix
+var vendorProperties = {
+  transform: transformProperty,
+  transition: transitionProperty,
+  transitionDuration: transitionProperty + 'Duration',
+  transitionProperty: transitionProperty + 'Property',
+  transitionDelay: transitionProperty + 'Delay'
+};`,
+    replace: `// vendor-prefix detection deleted by masonry-pretext #004 (\u00a7 L.2)
+// transition / transform unprefixed in every browser since 2014.
+var transitionEndEvent = 'transitionend';`,
+  },
+
+  // ── 2. Simplify css() — drop vendorProperties lookup ──────────────────────
+  {
+    description: 'simplify proto.css — drop vendorProperties lookup',
+    find: `  for ( var prop in style ) {
+    // use vendor property if available
+    var supportedProp = vendorProperties[ prop ] || prop;
+    elemStyle[ supportedProp ] = style[ prop ];
+  }`,
+    replace: `  for ( var prop in style ) {
+    elemStyle[ prop ] = style[ prop ];
+  }`,
+  },
+
+  // ── 3. Simplify transitionProps — drop toDashedAll helper ─────────────────
+  {
+    description: 'simplify transitionProps — drop toDashedAll helper',
+    find: `// dash before all cap letters, including first for
+// WebkitTransform => -webkit-transform
+function toDashedAll( str ) {
+  return str.replace( /([A-Z])/g, function( $1 ) {
+    return '-' + $1.toLowerCase();
+  });
+}
+
+var transitionProps = 'opacity,' + toDashedAll( transformProperty );`,
+    replace: `var transitionProps = 'opacity,transform';`,
+  },
+
+  // ── 4. Delete the onwebkit / onotransitionend handlers + dashedVendorProps ─
+  {
+    description: 'delete legacy onwebkitTransitionEnd / onotransitionend / dashedVendorProperties',
+    find: `proto.onwebkitTransitionEnd = function( event ) {
+  this.ontransitionend( event );
+};
+
+proto.onotransitionend = function( event ) {
+  this.ontransitionend( event );
+};
+
+// properties that I munge to make my life easier
+var dashedVendorProperties = {
+  '-webkit-transform': 'transform'
+};
+
+`,
+    replace: ``,
+  },
+
+  // ── 5. Simplify ontransitionend property normalization ────────────────────
+  {
+    description: 'simplify ontransitionend — drop dashedVendorProperties lookup',
+    find: `  // get property name of transitioned property, convert to prefix-free
+  var propertyName = dashedVendorProperties[ event.propertyName ] || event.propertyName;`,
+    replace: `  var propertyName = event.propertyName;`,
+  },
+
+  // ── 6. Simplify proto.remove — drop transitionProperty truthy check ───────
+  {
+    description: 'simplify proto.remove — drop transitionProperty truthy check',
+    find: `proto.remove = function() {
+  // just remove element if no transition support or no transition
+  if ( !transitionProperty || !parseFloat( this.layout.options.transitionDuration ) ) {`,
+    replace: `proto.remove = function() {
+  // just remove element if no transition duration
+  if ( !parseFloat( this.layout.options.transitionDuration ) ) {`,
+  },
+];
+
+const outlayerItemModernPlugin = {
+  name: 'outlayer-item-modern',
+  setup(build) {
+    build.onLoad({ filter: /outlayer[\\/]item\.js$/ }, async (args) => {
+      let src = await readFile(args.path, 'utf8');
+      for (const { description, find, replace } of OUTLAYER_ITEM_TRANSFORMS) {
+        const before = src;
+        src = src.replace(find, replace);
+        if (src === before) {
+          throw new Error(
+            `outlayer-item-modern: pattern not found for "${description}" ` +
+            `in ${args.path}. The outlayer/item.js source may have changed; ` +
+            `re-derive the transform list and update scripts/build.mjs.`,
+          );
+        }
+      }
+      return { contents: src, loader: 'js' };
+    });
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // matchesSelector shim plugin (improvement 003 / roadmap § L.1)
 //
 // `desandro-matches-selector` is a 50-line polyfill that walks
@@ -127,7 +272,7 @@ const sharedConfig = {
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
-  plugins: [jqueryStubPlugin, matchesSelectorShimPlugin],
+  plugins: [jqueryStubPlugin, matchesSelectorShimPlugin, outlayerItemModernPlugin],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

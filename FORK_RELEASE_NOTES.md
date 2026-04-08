@@ -17,6 +17,71 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.4 — 2026-04-08 — Delete vendor-prefix detection (§ L.2a)
+
+> Tag: `v5.0.0-dev.4` · Improvement: [`004-delete-vendor-prefix-detection.md`](./improvements/004-delete-vendor-prefix-detection.md) · Closes upstream: _none — see "SSR claim" below_
+
+Second deletion sweep. Removes the vendor-prefix detection block in `outlayer/item.js` plus every consumer site (the `vendorProperties` lookup, the `toDashedAll` helper, the `dashedVendorProperties` table, the `proto.onwebkitTransitionEnd` / `proto.onotransitionend` handlers, the `transitionProperty` truthy guard in `proto.remove`). `transition` and `transform` have been unprefixed in every browser since 2014 and are universally available at the fork's target baseline (Chrome 84 / Firefox 86 / Safari 15 / Edge 84) — the polyfill machinery is dead code.
+
+Applied via a new build-time esbuild plugin (`outlayerItemModernPlugin`) that runs six exact-string substitutions on `node_modules/outlayer/item.js`. Each substitution must succeed or the build aborts loudly — guards against silent breakage if `outlayer` is ever updated upstream.
+
+### Removed
+
+- ~50 raw LOC of dead vendor-prefix detection in `outlayer/item.js`, plus ~30 dependent use sites.
+- The `vendorProperties` lookup table (and the per-call indirection in `proto.css`).
+- The `toDashedAll` helper.
+- `proto.onwebkitTransitionEnd` and `proto.onotransitionend` legacy event handlers.
+- `dashedVendorProperties` lookup table.
+
+### Added
+
+- **`test/visual/ssr-smoke.mjs`** — diagnostic script that loads the bundled file in a Node `vm` context with empty globals and asserts the IIFE doesn't throw. Currently fails (see "SSR claim" below). Will be promoted to `make test` when the SSR fix lands.
+
+### Numbers
+
+| File | Metric | pre-004 | v5.0.0-dev.4 | Δ |
+|---|---|---:|---:|---:|
+| `dist/masonry.pkgd.js` | raw | 55,543 | **54,224** | **−2.37 %** |
+| `dist/masonry.pkgd.js` | gzip | 10,521 | **10,285** | **−2.24 %** |
+| `dist/masonry.pkgd.js` | brotli | 9,317 | **9,099** | **−2.34 %** |
+| `dist/masonry.pkgd.min.js` | raw | 23,902 | **23,296** | **−2.53 %** |
+| `dist/masonry.pkgd.min.js` | gzip | 7,788 | **7,616** | **−2.21 %** |
+| `dist/masonry.pkgd.min.js` | brotli | 7,040 | **6,851** | **−2.69 %** |
+| Visual regression tests | passing | 4 / 4 | **4 / 4** | unchanged |
+
+### Vs upstream-frozen v4.2.2
+
+| Metric | v4.2.2 | v5.0.0-dev.4 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,103 | **23,296** | **−807 B** |
+| `dist/masonry.pkgd.min.js` gzip | 7,367 | 7,616 | +249 B |
+| `dist/masonry.pkgd.min.js` brotli | 6,601 | 6,851 | +250 B |
+
+**52 % of the post-002 esbuild gzip regression is now recovered.** Was +524 B over upstream after #002, +421 B after #003, now +249 B after #004. Two more deletions of similar size and we'll be at parity or below.
+
+### SSR claim — disproven by the new `ssr-smoke.mjs` test
+
+The original roadmap predicted this improvement would close upstream issues `#1194` and `#1121` (SSR `window` undefined) by removing the `var docElemStyle = document.documentElement.style;` line at the top of `outlayer/item.js`. **That prediction is wrong** — verified by the new `test/visual/ssr-smoke.mjs` script:
+
+- Pre-004 bundle: crashes at line 22 with `window is not defined`.
+- Post-004 bundle: crashes at line 22 with `window is not defined`. **Same line, same error.**
+
+The crash isn't inside the `outlayer/item.js` factory body (which is what #004 deleted) — it's at the UMD wrapper's IIFE call site `(function(g,l){...})(window,...)`, which dereferences `window` as a free variable before the factory body even runs. This is one stack frame *earlier* than where the prediction assumed the crash would happen.
+
+SSR fix is now planned as a separate improvement (**§ L.2b**) that wraps every UMD invocation site with `typeof window !== 'undefined' ? window : {}`. The `ssr-smoke.mjs` script will be the gate for that improvement.
+
+### Predicted vs actual
+
+All five **size** predictions matched within their stated bands. The **SSR** prediction was disproven by direct test — documented in full in the improvement file.
+
+### Migration notes
+
+- **None for browser consumers.** Behavior is unchanged in any supported browser.
+- **CDN consumers**: `dist/masonry.pkgd.min.js` byte content has changed; regenerate SRI hashes if you pin them.
+- **SSR consumers**: still broken. The fix is roadmap § L.2b, scheduled next.
+
+---
+
 ## v5.0.0-dev.3 — 2026-04-08 — Delete matchesSelector polyfill (§ L.1)
 
 > Tag: `v5.0.0-dev.3` · Improvement: [`003-delete-matches-selector-polyfill.md`](./improvements/003-delete-matches-selector-polyfill.md) · Closes upstream: _none directly_

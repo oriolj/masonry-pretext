@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.3
+ * Masonry PACKAGED v5.0.0-dev.4
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -420,20 +420,7 @@ var Masonry = (() => {
           prop = null;
           return true;
         }
-        var docElemStyle = document.documentElement.style;
-        var transitionProperty = typeof docElemStyle.transition == "string" ? "transition" : "WebkitTransition";
-        var transformProperty = typeof docElemStyle.transform == "string" ? "transform" : "WebkitTransform";
-        var transitionEndEvent = {
-          WebkitTransition: "webkitTransitionEnd",
-          transition: "transitionend"
-        }[transitionProperty];
-        var vendorProperties = {
-          transform: transformProperty,
-          transition: transitionProperty,
-          transitionDuration: transitionProperty + "Duration",
-          transitionProperty: transitionProperty + "Property",
-          transitionDelay: transitionProperty + "Delay"
-        };
+        var transitionEndEvent = "transitionend";
         function Item(element, layout) {
           if (!element) {
             return;
@@ -470,8 +457,7 @@ var Masonry = (() => {
         proto.css = function(style) {
           var elemStyle = this.element.style;
           for (var prop in style) {
-            var supportedProp = vendorProperties[prop] || prop;
-            elemStyle[supportedProp] = style[prop];
+            elemStyle[prop] = style[prop];
           }
         };
         proto.getPosition = function() {
@@ -595,12 +581,7 @@ var Masonry = (() => {
           this.css(args.to);
           this.isTransitioning = true;
         };
-        function toDashedAll(str) {
-          return str.replace(/([A-Z])/g, function($1) {
-            return "-" + $1.toLowerCase();
-          });
-        }
-        var transitionProps = "opacity," + toDashedAll(transformProperty);
+        var transitionProps = "opacity,transform";
         proto.enableTransition = function() {
           if (this.isTransitioning) {
             return;
@@ -614,21 +595,12 @@ var Masonry = (() => {
           });
           this.element.addEventListener(transitionEndEvent, this, false);
         };
-        proto.onwebkitTransitionEnd = function(event) {
-          this.ontransitionend(event);
-        };
-        proto.onotransitionend = function(event) {
-          this.ontransitionend(event);
-        };
-        var dashedVendorProperties = {
-          "-webkit-transform": "transform"
-        };
         proto.ontransitionend = function(event) {
           if (event.target !== this.element) {
             return;
           }
           var _transition = this._transn;
-          var propertyName = dashedVendorProperties[event.propertyName] || event.propertyName;
+          var propertyName = event.propertyName;
           delete _transition.ingProperties[propertyName];
           if (isEmptyObj(_transition.ingProperties)) {
             this.disableTransition();
@@ -674,7 +646,7 @@ var Masonry = (() => {
           this.emitEvent("remove", [this]);
         };
         proto.remove = function() {
-          if (!transitionProperty || !parseFloat(this.layout.options.transitionDuration)) {
+          if (!parseFloat(this.layout.options.transitionDuration)) {
             this.removeElem();
             return;
           }
