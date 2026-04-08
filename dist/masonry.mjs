@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.22
+ * Masonry PACKAGED v5.0.0-dev.23
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -824,7 +824,7 @@ var require_outlayer = __commonJS({
         this.items = this._itemize(this.element.children);
       };
       proto._itemize = function(elems) {
-        var itemElems = this._filterFindItemElements(elems);
+        var itemElems = utils.filterFindElements(elems, this.options.itemSelector);
         var Item2 = this.constructor.Item;
         var items = [];
         for (var i = 0; i < itemElems.length; i++) {
@@ -833,9 +833,6 @@ var require_outlayer = __commonJS({
           items.push(item);
         }
         return items;
-      };
-      proto._filterFindItemElements = function(elems) {
-        return utils.filterFindElements(elems, this.options.itemSelector);
       };
       proto.getItemElements = function() {
         return this.items.map(function(item) {
@@ -872,14 +869,11 @@ var require_outlayer = __commonJS({
         }
       };
       proto.layoutItems = function(items, isInstant) {
-        items = this._getItemsForLayout(items);
-        this._layoutItems(items, isInstant);
-        this._postLayout();
-      };
-      proto._getItemsForLayout = function(items) {
-        return items.filter(function(item) {
+        items = items.filter(function(item) {
           return !item.isIgnored;
         });
+        this._layoutItems(items, isInstant);
+        this._postLayout();
       };
       proto._layoutItems = function(items, isInstant) {
         this._emitCompleteOnItems("layout", items);

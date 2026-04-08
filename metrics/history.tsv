@@ -42,3 +42,4 @@ timestamp	label	commit	pkg_name	pkg_version	files	loc	deps	dev_deps	src_raw	src_
 2026-04-08T16:21:29Z	post-021-docs-and-nextjs	f95d4a0	masonry-pretext	5.0.0-dev.21	107	19942	2	4	29127	9152	7891	58725	11061	9866	25571	8242	7485
 2026-04-08T18:10:24Z	pre-022-delete-settimeout-docready	96f5449	masonry-pretext	5.0.0-dev.21	108	20167	2	4	29127	9152	7891	58725	11061	9866	25571	8242	7485
 2026-04-08T18:11:05Z	post-022-delete-settimeout-docready	96f5449	masonry-pretext	5.0.0-dev.22	108	20189	2	4	29127	9152	7891	58715	11060	9862	25561	8240	7490
+2026-04-08T18:12:59Z	post-023-inline-helpers	d191014	masonry-pretext	5.0.0-dev.23	109	20287	2	4	29127	9152	7891	58479	11034	9827	25415	8214	7463

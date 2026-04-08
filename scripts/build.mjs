@@ -279,6 +279,70 @@ var dashedVendorProperties = {
 
   return Layout;`,
       },
+      // ── #023 — inline single-call helpers (item F) ─────────────────────────
+      // `_filterFindItemElements` and `_getItemsForLayout` are each called
+      // exactly once and each are a single trivial expression. Inlining them
+      // at the call site saves the proto declaration + the method dispatch
+      // overhead that the minifier can't fully optimize away.
+      {
+        description: '[#023] outlayer.js — inline _filterFindItemElements into _itemize',
+        find: `proto._itemize = function( elems ) {
+
+  var itemElems = this._filterFindItemElements( elems );
+  var Item = this.constructor.Item;`,
+        replace: `proto._itemize = function( elems ) {
+
+  var itemElems = utils.filterFindElements( elems, this.options.itemSelector );
+  var Item = this.constructor.Item;`,
+      },
+      {
+        description: '[#023] outlayer.js — delete now-unused proto._filterFindItemElements',
+        find: `/**
+ * get item elements to be used in layout
+ * @param {Array or NodeList or HTMLElement} elems
+ * @returns {Array} items - item elements
+ */
+proto._filterFindItemElements = function( elems ) {
+  return utils.filterFindElements( elems, this.options.itemSelector );
+};
+
+`,
+        replace: ``,
+      },
+      {
+        description: '[#023] outlayer.js — inline _getItemsForLayout into layoutItems',
+        find: `proto.layoutItems = function( items, isInstant ) {
+  items = this._getItemsForLayout( items );
+
+  this._layoutItems( items, isInstant );
+
+  this._postLayout();
+};`,
+        replace: `proto.layoutItems = function( items, isInstant ) {
+  items = items.filter( function( item ) { return !item.isIgnored; });
+
+  this._layoutItems( items, isInstant );
+
+  this._postLayout();
+};`,
+      },
+      {
+        description: '[#023] outlayer.js — delete now-unused proto._getItemsForLayout',
+        find: `/**
+ * get the items to be laid out
+ * you may want to skip over some items
+ * @param {Array} items
+ * @returns {Array} items
+ */
+proto._getItemsForLayout = function( items ) {
+  return items.filter( function( item ) {
+    return !item.isIgnored;
+  });
+};
+
+`,
+        replace: ``,
+      },
     ],
   },
   {

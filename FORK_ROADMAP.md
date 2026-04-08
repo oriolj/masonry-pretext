@@ -1164,7 +1164,7 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | C | `class extends` modernization for Outlayer + Item (replace `Object.create` + `utils.extend(proto, ...)`) | § Post-#010 | ⬜ | | ~120-200 B gz; pervasive refactor |
 | D | Inline EvEmitter, drop `once()` + `allOff()` + `_onceEvents` plumbing (after A) | § Post-#010 + § P.3 | ⬜ | | ~100-140 B gz |
 | E | Delete `Outlayer.create()` factory + `htmlInit` auto-init | § Post-#010 | ⬜ | | ~80-110 B gz; **closes desandro/masonry#1104**; breaking for `data-masonry` users |
-| F | Inline single-call helpers + dedupe poorly-compressing strings | § Post-#010 | ⬜ | | ~60-90 B gz |
+| F | Inline single-call helpers + dedupe poorly-compressing strings | § Post-#010 | ✅ `v5.0.0-dev.23` | [023-inline-single-call-helpers.md](./improvements/023-inline-single-call-helpers.md) | inlined `_filterFindItemElements` + `_getItemsForLayout`; **−27 B gz / −146 B raw** |
 | **— Newly discovered (review #4) — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — —** |
 | **M** | **Allocation-free `_getColGroupY` hot path** (replace `slice()` + `Math.max.apply` with direct loop) | § Post-#010 (review #4) | ⬜ | | NEW perf win; ~10 LOC, no breaking change, removes per-item GC pressure on multi-col grids |
 | **N** | **WeakMap-keyed item registry** (replace `getItem` linear scan + `outlayerGUID` expando + global `instances[]`) | § Post-#010 (review #4) | ⬜ | | NEW; deletes ~30 LOC of registry plumbing, eliminates an expando, eliminates a memory leak class, makes lookups O(1) |
