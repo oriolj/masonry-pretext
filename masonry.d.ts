@@ -286,6 +286,43 @@ export default class Masonry {
 
   // ----- Static -----
 
+  /** The current dev tag, e.g. `'5.0.0-dev.37'`. Replaced at build time
+   *  from `package.json`. Returns `'source'` if `masonry.js` is loaded
+   *  raw via the `./source` package export (no build step).
+   *
+   *  ```ts
+   *  import Masonry from 'masonry-pretext';
+   *  console.log(Masonry.version); // → '5.0.0-dev.37'
+   *  ```
+   */
+  static version: string;
+
+  /** Discriminator for the fork: always `'masonry-pretext'`. Upstream
+   *  `desandro/masonry` doesn't have this property, so a `typeof` check
+   *  reliably tells you which library you've loaded:
+   *
+   *  ```ts
+   *  if ((Masonry as any).fork === 'masonry-pretext') {
+   *    // running on the fork — `static: true`, computeLayout, pretextify, etc. all available
+   *  }
+   *  ```
+   */
+  static fork: 'masonry-pretext';
+
+  /** Suppress the one-time `console.info` banner that fires on the
+   *  first `new Masonry(...)` construction. Set BEFORE the first
+   *  construction or it has no effect (the banner has already fired).
+   *
+   *  ```ts
+   *  Masonry.silent = true;
+   *  new Masonry('.grid', { columnWidth: 200 }); // no console output
+   *  ```
+   *
+   *  The banner is `console.info`-level, so most production setups
+   *  hide it by default — `silent` is for users who explicitly want
+   *  zero log noise from masonry. */
+  static silent: boolean | undefined;
+
   /** Look up the Masonry instance attached to a given element. */
   static data(elem: Element | string): Masonry | undefined;
 

@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.36
+ * Masonry PACKAGED v5.0.0-dev.37
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -542,15 +542,15 @@ var require_outlayer = __commonJS({
       }
     })(typeof window !== "undefined" ? window : {}, function factory(window2, EvEmitter, getSize, utils, Item) {
       "use strict";
-      var console = window2.console;
+      var console2 = window2.console;
       var noop = function() {
       };
       var instances = /* @__PURE__ */ new WeakMap();
       function Outlayer(element, options) {
         var queryElement = utils.getQueryElement(element);
         if (!queryElement) {
-          if (console) {
-            console.error("Bad element for " + this.constructor.namespace + ": " + (queryElement || element));
+          if (console2) {
+            console2.error("Bad element for " + this.constructor.namespace + ": " + (queryElement || element));
           }
           return;
         }
@@ -937,6 +937,8 @@ var require_masonry = __commonJS({
       Masonry2.prototype = Object.create(Outlayer.prototype);
       Masonry2.prototype.constructor = Masonry2;
       Masonry2.namespace = "masonry";
+      Masonry2.version = true ? "5.0.0-dev.37" : "source";
+      Masonry2.fork = "masonry-pretext";
       Masonry2.defaults = Object.assign({}, Outlayer.defaults);
       Masonry2.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
       Masonry2.data = Outlayer.data;
@@ -1128,8 +1130,17 @@ var require_masonry = __commonJS({
         }
         return (cols - unusedCols) * stride - gutter;
       }
+      var hasLoggedBanner = false;
       var baseCreate = proto._create;
       proto._create = function() {
+        if (!hasLoggedBanner && !Masonry2.silent && typeof console !== "undefined" && console.info) {
+          hasLoggedBanner = true;
+          console.info(
+            "%cmasonry-pretext%c v" + Masonry2.version + " \u2014 https://github.com/oriolj/masonry-pretext",
+            "color: #09f; font-weight: bold",
+            "color: inherit"
+          );
+        }
         if (this.options.static) {
           this.options.transitionDuration = 0;
         }

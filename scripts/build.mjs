@@ -1185,6 +1185,13 @@ const baseConfig = {
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
+  // #037 — inject the package.json version as a compile-time constant
+  // so `Masonry.version` reports the actual built tag at runtime. The
+  // `typeof __MASONRY_VERSION__` guard in masonry.js falls back to
+  // 'source' for the raw `./source` import path.
+  define: {
+    __MASONRY_VERSION__: JSON.stringify( pkg.version ),
+  },
   plugins: [matchesSelectorShimPlugin, getSizeShimPlugin, evEmitterShimPlugin, depFilePatchesPlugin],
 };
 

@@ -43,6 +43,15 @@
   Masonry.prototype = Object.create( Outlayer.prototype );
   Masonry.prototype.constructor = Masonry;
   Masonry.namespace = 'masonry';
+  // #037 — runtime self-identification. `Masonry.version` is replaced
+  // at build time by esbuild's `define` from package.json. The `typeof`
+  // guard returns 'source' when masonry.js is loaded raw via the
+  // `./source` package export (no build step, no define replacement).
+  // `Masonry.fork === 'masonry-pretext'` discriminates from upstream
+  // desandro/masonry, which never had this property.
+  Masonry.version = ( typeof __MASONRY_VERSION__ !== 'undefined' )
+    ? __MASONRY_VERSION__ : 'source';
+  Masonry.fork = 'masonry-pretext';
   Masonry.defaults = Object.assign( {}, Outlayer.defaults );
   // isFitWidth → fitWidth: legacy option name kept working alongside the new one.
   Masonry.compatOptions = Object.assign( {}, Outlayer.compatOptions, { fitWidth: 'isFitWidth' });
@@ -367,8 +376,24 @@
   // forces `transitionDuration: 0`, for server-rendered grids whose
   // content will not change after first paint. See the README SSR
   // section and improvements/015-static-ssr-preset.md.
+  // #037 — one-time console banner on first construction. Helps users
+  // confirm at a glance which masonry build they're running. Log via
+  // console.info so it shows in DevTools but stays out of error
+  // dashboards. Set `Masonry.silent = true` BEFORE the first
+  // `new Masonry(...)` to suppress.
+  var hasLoggedBanner = false;
   var baseCreate = proto._create;
   proto._create = function() {
+    if ( !hasLoggedBanner && !Masonry.silent &&
+         typeof console !== 'undefined' && console.info ) {
+      hasLoggedBanner = true;
+      console.info(
+        '%cmasonry-pretext%c v' + Masonry.version +
+          ' — https://github.com/oriolj/masonry-pretext',
+        'color: #09f; font-weight: bold',
+        'color: inherit'
+      );
+    }
     // Static mode: no animations on any relayout. Set before anything
     // else so item.transition() reads the overridden value.
     if ( this.options.static ) {
