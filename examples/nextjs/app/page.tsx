@@ -1,14 +1,15 @@
 // app/page.tsx — Next.js App Router server component.
 //
 // This file runs in Node during SSR. It imports a client component
-// (MasonryGrid.tsx) that owns the Masonry instance. Nothing on this page
-// touches the DOM — Masonry is never constructed on the server.
+// (MasonryGrid.tsx) that owns the Masonry instance.
 //
-// Note: `import Masonry from 'masonry-pretext'` would be safe to add here
-// too (as of improvement #005 the import no longer crashes in Node), but
-// you'd have nothing to do with it server-side today. Once roadmap item P
-// lands, a future `Masonry.computeLayout(...)` static helper would let you
-// pre-compute positions here and emit them inline.
+// This example uses the simpler "client-only Masonry construction"
+// pattern. For the FULL SSR pipeline (server-side `Masonry.computeLayout`
+// + inline absolute positions + client `initLayout: false` adoption →
+// CLS = 0.00 hydration), see `examples/astro/src/pages/index.astro`.
+// Bringing this Next.js example up to parity is straightforward — same
+// idea, server-component math, client-component adoption — and is a
+// PR-welcome follow-up.
 
 import MasonryGrid from './MasonryGrid';
 

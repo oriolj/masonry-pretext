@@ -89,6 +89,26 @@
     return found;
   }
 
+  // Resolve `options.columnWidth` to a percent value (number 0-100) or
+  // null if not a percent. Encapsulates all three detection layers so the
+  // result is cacheable behind a single key (the option value reference).
+  // See `_resetLayout` for the cache plumbing.
+  function detectPercentForOption( optCW, container ) {
+    if ( typeof optCW === 'string' ) {
+      // Layer 1 — literal '20%' option string.
+      var literalMatch = optCW.match( PERCENT_RE );
+      if ( literalMatch ) return parseFloat( literalMatch[1] );
+      // String selector — resolve sizer, fall through to Layer 2/3.
+      var sizer = container && container.querySelector( optCW );
+      return sizer ? detectPercentWidth( sizer ) : null;
+    }
+    if ( optCW instanceof HTMLElement ) {
+      // HTMLElement option — probe directly.
+      return detectPercentWidth( optCW );
+    }
+    return null;
+  }
+
   function scanRulesForPercentWidth( rules, elem ) {
     var found = null;
     for ( var i = 0; i < rules.length; i++ ) {
@@ -239,6 +259,66 @@
     };
   }
 
+  // Shared math helpers used by BOTH `proto.*` (instance layout) AND
+  // `Masonry.computeLayout` (Phase 2 / SSR pre-computation). These were
+  // duplicated across the two call sites in #017 — extracting them here
+  // makes drift between server and client mathematically impossible.
+  // The byte-for-byte gate (`test/visual/compute-layout.mjs`) becomes
+  // tautologically true rather than empirically verified.
+
+  /**
+   * Derive `cols` and per-column stride from raw inputs. Mirrors the
+   * branch in `proto.measureColumns` exactly.
+   */
+  function deriveCols( containerWidth, columnWidth, gutter, columnWidthPercent ) {
+    if ( columnWidthPercent ) {
+      var cols = Math.max( 1, Math.round( 100 / columnWidthPercent ) );
+      return { cols: cols, stride: ( containerWidth + gutter ) / cols };
+    }
+    var stride = columnWidth + gutter;
+    var paddedWidth = containerWidth + gutter;
+    var rawCols = paddedWidth / stride;
+    // fix rounding errors, typically with gutters
+    var excess = stride - paddedWidth % stride;
+    // if overshoot is less than a pixel, round up, otherwise floor it
+    var mathMethod = excess && excess < 1 ? 'round' : 'floor';
+    return {
+      cols: Math.max( 1, Math[ mathMethod ]( rawCols ) ),
+      stride: stride,
+    };
+  }
+
+  /**
+   * Push the spanned colYs down past a stamp. Mirrors the colYs-update
+   * loop in `proto._manageStamp`, including the #425 off-by-one fix
+   * for stamps that end exactly on a column boundary.
+   */
+  function applyStamp( colYs, cols, stride, firstX, lastX, stampMaxY ) {
+    var firstCol = Math.max( 0, Math.floor( firstX / stride ) );
+    var lastCol = Math.floor( lastX / stride );
+    // lastCol should not go over if multiple of stride #425
+    lastCol -= ( lastX % stride ) ? 0 : 1;
+    lastCol = Math.min( cols - 1, lastCol );
+    for ( var i = firstCol; i <= lastCol; i++ ) {
+      colYs[i] = Math.max( stampMaxY, colYs[i] );
+    }
+  }
+
+  /**
+   * Snap container width to the number of columns actually used,
+   * counting unused trailing columns from the right. Mirrors
+   * `proto._getContainerFitWidth`.
+   */
+  function computeFitContainerWidth( cols, colYs, stride, gutter ) {
+    var unusedCols = 0;
+    var i = cols;
+    while ( --i ) {
+      if ( colYs[i] !== 0 ) break;
+      unusedCols++;
+    }
+    return ( cols - unusedCols ) * stride - gutter;
+  }
+
   // document.fonts.ready first-paint gate (#010 / § P.4 — closes
   // desandro/masonry#1182) AND per-item ResizeObserver auto-relayout
   // (#012 / § P.1b — closes desandro/masonry#1147 + 7 image-overlap
@@ -365,28 +445,35 @@
   proto._resetLayout = function() {
     this.getSize();
 
-    // ── #014 — detect percentage columnWidth before _getMeasurement runs.
-    // For the literal 'NN%' option path we MUST short-circuit, because
-    // _getMeasurement would call querySelector('20%') and throw on the
-    // invalid selector. For the sizer-element path we let _getMeasurement
-    // run normally and then probe the resolved sizer afterwards.
-    this._columnWidthPercent = null;
+    // ── #014 — detect percentage columnWidth.
+    //
+    // For the literal 'NN%' option path we short-circuit `_getMeasurement`
+    // entirely — it would call `querySelector('20%')` and throw on the
+    // invalid selector. For the sizer-element path we let `_getMeasurement`
+    // run normally and probe the resolved sizer afterwards.
+    //
+    // Detection is cached against `options.columnWidth` (the input
+    // reference). The stylesheet walk in `detectPercentWidth` is expensive
+    // — on a Tailwind/DaisyUI page with thousands of CSSRules it's
+    // multi-millisecond per call. ResizeObserver-driven relayouts (#012)
+    // call `_resetLayout` 60+ times per second during a window-resize
+    // drag, so the walk has to be cached or it dominates the layout cost.
+    // Cache invalidation is reference equality on `options.columnWidth` —
+    // the only way the detection result can change is if the user calls
+    // `instance.option({columnWidth: ...})` with a new value.
     var optCW = this.options.columnWidth;
-    var literalMatch = typeof optCW === 'string' && optCW.match( PERCENT_RE );
-    if ( literalMatch ) {
-      this._columnWidthPercent = parseFloat( literalMatch[1] );
-      // measureColumns will replace this via the percent path below.
+    if ( this._percentCacheKey !== optCW ) {
+      this._percentCacheKey = optCW;
+      this._percentCacheValue = detectPercentForOption( optCW, this.element );
+    }
+    this._columnWidthPercent = this._percentCacheValue;
+
+    if ( this._columnWidthPercent !== null && typeof optCW === 'string' &&
+         PERCENT_RE.test( optCW ) ) {
+      // Literal '20%' path: skip _getMeasurement so querySelector doesn't choke.
       this.columnWidth = 0;
     } else {
       this._getMeasurement( 'columnWidth', 'outerWidth' );
-      if ( typeof optCW === 'string' || optCW instanceof HTMLElement ) {
-        var sizer = optCW instanceof HTMLElement
-          ? optCW
-          : this.element.querySelector( optCW );
-        if ( sizer ) {
-          this._columnWidthPercent = detectPercentWidth( sizer );
-        }
-      }
     }
 
     this._getMeasurement( 'gutter', 'outerWidth' );
@@ -405,45 +492,28 @@
   proto.measureColumns = function() {
     this.getContainerWidth();
 
-    // ── #014 — percent columnWidth math fix (closes desandro/masonry#1006).
-    // When columnWidth originated from a percentage, derive cols directly
-    // from the percent literal — round(100/percent) — and recompute
-    // columnWidth as the per-column stride (item width + gutter) so the
-    // inter-column gutters fit inside the container. Stride formula:
-    //   cols * stride - gutter = containerWidth
-    //   ⇒ stride = (containerWidth + gutter) / cols
-    // Matches the convention from the standard branch below where
-    // `this.columnWidth += this.gutter` makes columnWidth a stride too.
-    // Replaces the buggy gutter-overshoot math, which drops a column
-    // whenever (containerWidth + gutter) / (columnWidth + gutter)
-    // overshoots an integer by more than 1px.
-    if ( this._columnWidthPercent && this.containerWidth ) {
-      this.cols = Math.max( 1, Math.round( 100 / this._columnWidthPercent ) );
-      this.columnWidth = ( this.containerWidth + this.gutter ) / this.cols;
-      return;
-    }
-
-    // if columnWidth is 0, default to outerWidth of first item
-    if ( !this.columnWidth ) {
+    // #014 — fall back to first item's outerWidth when columnWidth is
+    // unset and no percent override is in effect. Has to happen before
+    // deriveCols because the helper takes columnWidth as input. Cannot
+    // live in deriveCols itself because the fallback requires DOM access.
+    if ( !this.columnWidth && !this._columnWidthPercent ) {
       var firstItem = this.items[0];
       var firstItemElem = firstItem && firstItem.element;
-      // columnWidth fall back to item of first element
+      // if first elem has no width, default to size of container
       this.columnWidth = firstItemElem && getSize( firstItemElem ).outerWidth ||
-        // if first elem has no width, default to size of container
         this.containerWidth;
     }
 
-    var columnWidth = this.columnWidth += this.gutter;
-
-    // calculate columns
-    var containerWidth = this.containerWidth + this.gutter;
-    var cols = containerWidth / columnWidth;
-    // fix rounding errors, typically with gutters
-    var excess = columnWidth - containerWidth % columnWidth;
-    // if overshoot is less than a pixel, round up, otherwise floor it
-    var mathMethod = excess && excess < 1 ? 'round' : 'floor';
-    cols = Math[ mathMethod ]( cols );
-    this.cols = Math.max( cols, 1 );
+    // Derive cols + stride via the shared helper. The standard branch's
+    // gutter-overshoot rounding and the #014 percent path both live here.
+    var derived = deriveCols(
+      this.containerWidth,
+      this.columnWidth,
+      this.gutter,
+      this._columnWidthPercent
+    );
+    this.cols = derived.cols;
+    this.columnWidth = derived.stride;
   };
 
   proto.getContainerWidth = function() {
@@ -533,24 +603,13 @@
   proto._manageStamp = function( stamp ) {
     var stampSize = getSize( stamp );
     var offset = this._getElementOffset( stamp );
-    // get the columns that this stamp affects
     var isOriginLeft = this._getOption('originLeft');
     var firstX = isOriginLeft ? offset.left : offset.right;
     var lastX = firstX + stampSize.outerWidth;
-    var firstCol = Math.floor( firstX / this.columnWidth );
-    firstCol = Math.max( 0, firstCol );
-    var lastCol = Math.floor( lastX / this.columnWidth );
-    // lastCol should not go over if multiple of columnWidth #425
-    lastCol -= lastX % this.columnWidth ? 0 : 1;
-    lastCol = Math.min( this.cols - 1, lastCol );
-    // set colYs to bottom of the stamp
-
     var isOriginTop = this._getOption('originTop');
     var stampMaxY = ( isOriginTop ? offset.top : offset.bottom ) +
       stampSize.outerHeight;
-    for ( var i = firstCol; i <= lastCol; i++ ) {
-      this.colYs[i] = Math.max( stampMaxY, this.colYs[i] );
-    }
+    applyStamp( this.colYs, this.cols, this.columnWidth, firstX, lastX, stampMaxY );
   };
 
   proto._getContainerSize = function() {
@@ -567,17 +626,7 @@
   };
 
   proto._getContainerFitWidth = function() {
-    var unusedCols = 0;
-    // count unused columns
-    var i = this.cols;
-    while ( --i ) {
-      if ( this.colYs[i] !== 0 ) {
-        break;
-      }
-      unusedCols++;
-    }
-    // fit container to columns that have been used
-    return ( this.cols - unusedCols ) * this.columnWidth - this.gutter;
+    return computeFitContainerWidth( this.cols, this.colYs, this.columnWidth, this.gutter );
   };
 
   proto.needsResizeLayout = function() {
@@ -624,56 +673,36 @@
   // ─────────────────────────────────────────────────────────────────────
   Masonry.computeLayout = function( opts ) {
     var items = opts.items || [];
-    var containerWidth = opts.containerWidth;
-    var columnWidth = opts.columnWidth;
     var gutter = opts.gutter || 0;
-    var fitWidth = !!opts.fitWidth;
-    var horizontalOrder = !!opts.horizontalOrder;
     var stamps = opts.stamps || [];
 
-    // ── Replicate measureColumns: derive cols + per-column stride ──
-    // The stride is `columnWidth + gutter` so position.x = stride * col.
-    // Matches the convention from proto.measureColumns where
-    // `this.columnWidth += this.gutter` inflates columnWidth to a stride.
-    var cols, stride;
-    if ( opts.columnWidthPercent ) {
-      // #014 percent path — derive cols from the percent literal
-      cols = Math.max( 1, Math.round( 100 / opts.columnWidthPercent ) );
-      stride = ( containerWidth + gutter ) / cols;
-    } else {
-      stride = columnWidth + gutter;
-      var rawCols = ( containerWidth + gutter ) / stride;
-      var excess = stride - ( containerWidth + gutter ) % stride;
-      var mathMethod = excess && excess < 1 ? 'round' : 'floor';
-      cols = Math.max( 1, Math[ mathMethod ]( rawCols ) );
-    }
+    // Derive cols + stride via the same helper proto.measureColumns uses,
+    // so server and client agreement is structural rather than empirical.
+    var derived = deriveCols(
+      opts.containerWidth, opts.columnWidth, gutter, opts.columnWidthPercent
+    );
+    var cols = derived.cols;
+    var stride = derived.stride;
 
-    // ── Initialize colYs to zero, then push down by any stamps ──
+    // Fresh colYs per call so subsequent calls don't see stale data.
     var colYs = new Array( cols );
     for ( var z = 0; z < cols; z++ ) colYs[z] = 0;
 
     for ( var s = 0; s < stamps.length; s++ ) {
       var stamp = stamps[s];
-      var firstX = stamp.x;
-      var lastX = firstX + stamp.width;
-      var firstCol = Math.max( 0, Math.floor( firstX / stride ) );
-      var lastCol = Math.floor( lastX / stride );
-      // lastCol should not go over if multiple of stride #425
-      lastCol -= ( lastX % stride ) ? 0 : 1;
-      lastCol = Math.min( cols - 1, lastCol );
-      var stampMaxY = stamp.y + stamp.height;
-      for ( var c = firstCol; c <= lastCol; c++ ) {
-        colYs[c] = Math.max( stampMaxY, colYs[c] );
-      }
+      applyStamp(
+        colYs, cols, stride,
+        stamp.x, stamp.x + stamp.width,
+        stamp.y + stamp.height
+      );
     }
 
-    // ── Place each item via the pure layer (#016) ──
     var state = {
       cols: cols,
       colYs: colYs,
       columnWidth: stride,
       horizontalColIndex: 0,
-      horizontalOrder: horizontalOrder,
+      horizontalOrder: !!opts.horizontalOrder,
     };
     var positions = new Array( items.length );
     for ( var i = 0; i < items.length; i++ ) {
@@ -681,28 +710,15 @@
       positions[i] = { x: result.x, y: result.y };
     }
 
-    // ── Container height = max colY ──
-    var maxY = colYs.length ? Math.max.apply( Math, colYs ) : 0;
-
-    // ── Container width when fitWidth: count unused trailing columns ──
-    var resultWidth;
-    if ( fitWidth ) {
-      var unusedCols = 0;
-      var k = cols;
-      while ( --k ) {
-        if ( colYs[k] !== 0 ) break;
-        unusedCols++;
-      }
-      resultWidth = ( cols - unusedCols ) * stride - gutter;
-    }
-
     var out = {
       positions: positions,
       cols: cols,
       columnWidth: stride,
-      containerHeight: maxY,
+      containerHeight: colYs.length ? Math.max.apply( Math, colYs ) : 0,
     };
-    if ( resultWidth !== undefined ) out.containerWidth = resultWidth;
+    if ( opts.fitWidth ) {
+      out.containerWidth = computeFitContainerWidth( cols, colYs, stride, gutter );
+    }
     return out;
   };
 

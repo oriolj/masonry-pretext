@@ -1274,6 +1274,18 @@ var require_masonry = __commonJS({
         }
         return found;
       }
+      function detectPercentForOption(optCW, container) {
+        if (typeof optCW === "string") {
+          var literalMatch = optCW.match(PERCENT_RE);
+          if (literalMatch) return parseFloat(literalMatch[1]);
+          var sizer = container && container.querySelector(optCW);
+          return sizer ? detectPercentWidth(sizer) : null;
+        }
+        if (optCW instanceof HTMLElement) {
+          return detectPercentWidth(optCW);
+        }
+        return null;
+      }
       function scanRulesForPercentWidth(rules, elem) {
         var found = null;
         for (var i = 0; i < rules.length; i++) {
@@ -1359,6 +1371,39 @@ var require_masonry = __commonJS({
           newHorizontalColIndex
         };
       }
+      function deriveCols(containerWidth, columnWidth, gutter, columnWidthPercent) {
+        if (columnWidthPercent) {
+          var cols = Math.max(1, Math.round(100 / columnWidthPercent));
+          return { cols, stride: (containerWidth + gutter) / cols };
+        }
+        var stride = columnWidth + gutter;
+        var paddedWidth = containerWidth + gutter;
+        var rawCols = paddedWidth / stride;
+        var excess = stride - paddedWidth % stride;
+        var mathMethod = excess && excess < 1 ? "round" : "floor";
+        return {
+          cols: Math.max(1, Math[mathMethod](rawCols)),
+          stride
+        };
+      }
+      function applyStamp(colYs, cols, stride, firstX, lastX, stampMaxY) {
+        var firstCol = Math.max(0, Math.floor(firstX / stride));
+        var lastCol = Math.floor(lastX / stride);
+        lastCol -= lastX % stride ? 0 : 1;
+        lastCol = Math.min(cols - 1, lastCol);
+        for (var i = firstCol; i <= lastCol; i++) {
+          colYs[i] = Math.max(stampMaxY, colYs[i]);
+        }
+      }
+      function computeFitContainerWidth(cols, colYs, stride, gutter) {
+        var unusedCols = 0;
+        var i = cols;
+        while (--i) {
+          if (colYs[i] !== 0) break;
+          unusedCols++;
+        }
+        return (cols - unusedCols) * stride - gutter;
+      }
       var baseCreate = proto._create;
       proto._create = function() {
         if (this.options.static) {
@@ -1439,20 +1484,16 @@ var require_masonry = __commonJS({
       };
       proto._resetLayout = function() {
         this.getSize();
-        this._columnWidthPercent = null;
         var optCW = this.options.columnWidth;
-        var literalMatch = typeof optCW === "string" && optCW.match(PERCENT_RE);
-        if (literalMatch) {
-          this._columnWidthPercent = parseFloat(literalMatch[1]);
+        if (this._percentCacheKey !== optCW) {
+          this._percentCacheKey = optCW;
+          this._percentCacheValue = detectPercentForOption(optCW, this.element);
+        }
+        this._columnWidthPercent = this._percentCacheValue;
+        if (this._columnWidthPercent !== null && typeof optCW === "string" && PERCENT_RE.test(optCW)) {
           this.columnWidth = 0;
         } else {
           this._getMeasurement("columnWidth", "outerWidth");
-          if (typeof optCW === "string" || optCW instanceof HTMLElement) {
-            var sizer = optCW instanceof HTMLElement ? optCW : this.element.querySelector(optCW);
-            if (sizer) {
-              this._columnWidthPercent = detectPercentWidth(sizer);
-            }
-          }
         }
         this._getMeasurement("gutter", "outerWidth");
         this.measureColumns();
@@ -1465,24 +1506,19 @@ var require_masonry = __commonJS({
       };
       proto.measureColumns = function() {
         this.getContainerWidth();
-        if (this._columnWidthPercent && this.containerWidth) {
-          this.cols = Math.max(1, Math.round(100 / this._columnWidthPercent));
-          this.columnWidth = (this.containerWidth + this.gutter) / this.cols;
-          return;
-        }
-        if (!this.columnWidth) {
+        if (!this.columnWidth && !this._columnWidthPercent) {
           var firstItem = this.items[0];
           var firstItemElem = firstItem && firstItem.element;
-          this.columnWidth = firstItemElem && getSize(firstItemElem).outerWidth || // if first elem has no width, default to size of container
-          this.containerWidth;
+          this.columnWidth = firstItemElem && getSize(firstItemElem).outerWidth || this.containerWidth;
         }
-        var columnWidth = this.columnWidth += this.gutter;
-        var containerWidth = this.containerWidth + this.gutter;
-        var cols = containerWidth / columnWidth;
-        var excess = columnWidth - containerWidth % columnWidth;
-        var mathMethod = excess && excess < 1 ? "round" : "floor";
-        cols = Math[mathMethod](cols);
-        this.cols = Math.max(cols, 1);
+        var derived = deriveCols(
+          this.containerWidth,
+          this.columnWidth,
+          this.gutter,
+          this._columnWidthPercent
+        );
+        this.cols = derived.cols;
+        this.columnWidth = derived.stride;
       };
       proto.getContainerWidth = function() {
         var isFitWidth = this._getOption("fitWidth");
@@ -1534,16 +1570,9 @@ var require_masonry = __commonJS({
         var isOriginLeft = this._getOption("originLeft");
         var firstX = isOriginLeft ? offset.left : offset.right;
         var lastX = firstX + stampSize.outerWidth;
-        var firstCol = Math.floor(firstX / this.columnWidth);
-        firstCol = Math.max(0, firstCol);
-        var lastCol = Math.floor(lastX / this.columnWidth);
-        lastCol -= lastX % this.columnWidth ? 0 : 1;
-        lastCol = Math.min(this.cols - 1, lastCol);
         var isOriginTop = this._getOption("originTop");
         var stampMaxY = (isOriginTop ? offset.top : offset.bottom) + stampSize.outerHeight;
-        for (var i = firstCol; i <= lastCol; i++) {
-          this.colYs[i] = Math.max(stampMaxY, this.colYs[i]);
-        }
+        applyStamp(this.colYs, this.cols, this.columnWidth, firstX, lastX, stampMaxY);
       };
       proto._getContainerSize = function() {
         this.maxY = Math.max.apply(Math, this.colYs);
@@ -1556,15 +1585,7 @@ var require_masonry = __commonJS({
         return size;
       };
       proto._getContainerFitWidth = function() {
-        var unusedCols = 0;
-        var i = this.cols;
-        while (--i) {
-          if (this.colYs[i] !== 0) {
-            break;
-          }
-          unusedCols++;
-        }
-        return (this.cols - unusedCols) * this.columnWidth - this.gutter;
+        return computeFitContainerWidth(this.cols, this.colYs, this.columnWidth, this.gutter);
       };
       proto.needsResizeLayout = function() {
         var previousWidth = this.containerWidth;
@@ -1573,68 +1594,50 @@ var require_masonry = __commonJS({
       };
       Masonry2.computeLayout = function(opts) {
         var items = opts.items || [];
-        var containerWidth = opts.containerWidth;
-        var columnWidth = opts.columnWidth;
         var gutter = opts.gutter || 0;
-        var fitWidth = !!opts.fitWidth;
-        var horizontalOrder = !!opts.horizontalOrder;
         var stamps = opts.stamps || [];
-        var cols, stride;
-        if (opts.columnWidthPercent) {
-          cols = Math.max(1, Math.round(100 / opts.columnWidthPercent));
-          stride = (containerWidth + gutter) / cols;
-        } else {
-          stride = columnWidth + gutter;
-          var rawCols = (containerWidth + gutter) / stride;
-          var excess = stride - (containerWidth + gutter) % stride;
-          var mathMethod = excess && excess < 1 ? "round" : "floor";
-          cols = Math.max(1, Math[mathMethod](rawCols));
-        }
+        var derived = deriveCols(
+          opts.containerWidth,
+          opts.columnWidth,
+          gutter,
+          opts.columnWidthPercent
+        );
+        var cols = derived.cols;
+        var stride = derived.stride;
         var colYs = new Array(cols);
         for (var z = 0; z < cols; z++) colYs[z] = 0;
         for (var s = 0; s < stamps.length; s++) {
           var stamp = stamps[s];
-          var firstX = stamp.x;
-          var lastX = firstX + stamp.width;
-          var firstCol = Math.max(0, Math.floor(firstX / stride));
-          var lastCol = Math.floor(lastX / stride);
-          lastCol -= lastX % stride ? 0 : 1;
-          lastCol = Math.min(cols - 1, lastCol);
-          var stampMaxY = stamp.y + stamp.height;
-          for (var c = firstCol; c <= lastCol; c++) {
-            colYs[c] = Math.max(stampMaxY, colYs[c]);
-          }
+          applyStamp(
+            colYs,
+            cols,
+            stride,
+            stamp.x,
+            stamp.x + stamp.width,
+            stamp.y + stamp.height
+          );
         }
         var state = {
           cols,
           colYs,
           columnWidth: stride,
           horizontalColIndex: 0,
-          horizontalOrder
+          horizontalOrder: !!opts.horizontalOrder
         };
         var positions = new Array(items.length);
         for (var i = 0; i < items.length; i++) {
           var result = placeItem(items[i], state);
           positions[i] = { x: result.x, y: result.y };
         }
-        var maxY = colYs.length ? Math.max.apply(Math, colYs) : 0;
-        var resultWidth;
-        if (fitWidth) {
-          var unusedCols = 0;
-          var k = cols;
-          while (--k) {
-            if (colYs[k] !== 0) break;
-            unusedCols++;
-          }
-          resultWidth = (cols - unusedCols) * stride - gutter;
-        }
         var out = {
           positions,
           cols,
           columnWidth: stride,
-          containerHeight: maxY
+          containerHeight: colYs.length ? Math.max.apply(Math, colYs) : 0
         };
-        if (resultWidth !== void 0) out.containerWidth = resultWidth;
+        if (opts.fitWidth) {
+          out.containerWidth = computeFitContainerWidth(cols, colYs, stride, gutter);
+        }
         return out;
       };
       return Masonry2;

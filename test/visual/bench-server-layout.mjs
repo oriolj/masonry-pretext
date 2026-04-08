@@ -17,6 +17,10 @@
 
 import { parseArgs } from 'node:util';
 import Masonry from '../../dist/masonry.mjs';
+import {
+  summarize, fmtMs,
+  COL_WIDTH, GUTTER, CONTAINER_WIDTH, buildItems,
+} from './_bench-stats.mjs';
 
 const { values } = parseArgs({
   options: {
@@ -27,27 +31,6 @@ const { values } = parseArgs({
 
 const RUNS = Number( values.runs );
 const SIZES = values.sizes.split( ',' ).map( Number );
-
-// ─────────────────────────────────────────────────────────────────────
-// Build a deterministic N-item grid. Heights follow the same formula as
-// the Astro example so the bench output is reproducible AND comparable
-// to a real-world demo.
-// ─────────────────────────────────────────────────────────────────────
-const COL_WIDTH = 240;
-const GUTTER = 16;
-const COLS = 3;
-const CONTAINER_WIDTH = COLS * COL_WIDTH + ( COLS - 1 ) * GUTTER; // 752
-
-function buildItems( n ) {
-  const items = new Array( n );
-  for ( let i = 0; i < n; i++ ) {
-    items[i] = {
-      outerWidth: COL_WIDTH,
-      outerHeight: 80 + ( ( i * 37 ) % 220 ),
-    };
-  }
-  return items;
-}
 
 function timeOne( items ) {
   const t0 = process.hrtime.bigint();
@@ -60,24 +43,6 @@ function timeOne( items ) {
   const t1 = process.hrtime.bigint();
   // Convert nanoseconds → milliseconds with 4 decimal places of precision.
   return Number( t1 - t0 ) / 1_000_000;
-}
-
-function summarize( times ) {
-  const sorted = [...times].sort( ( a, b ) => a - b );
-  const median = sorted[ Math.floor( sorted.length / 2 ) ];
-  const mean = sorted.reduce( ( s, x ) => s + x, 0 ) / sorted.length;
-  const min = sorted[0];
-  const max = sorted[ sorted.length - 1 ];
-  const p10 = sorted[ Math.floor( sorted.length * 0.1 ) ];
-  const p90 = sorted[ Math.floor( sorted.length * 0.9 ) ];
-  return { median, mean, min, max, p10, p90 };
-}
-
-function fmt( ms ) {
-  if ( ms < 0.1 ) return ms.toFixed( 4 );
-  if ( ms < 1 ) return ms.toFixed( 3 );
-  if ( ms < 10 ) return ms.toFixed( 2 );
-  return ms.toFixed( 1 );
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -109,7 +74,7 @@ for ( const N of SIZES ) {
 
   const s = summarize( times );
   console.log(
-    `  ${String( N ).padStart( 8 )}  |  ${fmt( s.median ).padStart( 6 )}ms |  ${fmt( s.mean ).padStart( 6 )}ms |  ${fmt( s.min ).padStart( 6 )}ms |  ${fmt( s.max ).padStart( 6 )}ms |  ${fmt( s.p10 ).padStart( 6 )}ms |  ${fmt( s.p90 ).padStart( 6 )}ms`
+    `  ${String( N ).padStart( 8 )}  |  ${fmtMs( s.median ).padStart( 6 )}ms |  ${fmtMs( s.mean ).padStart( 6 )}ms |  ${fmtMs( s.min ).padStart( 6 )}ms |  ${fmtMs( s.max ).padStart( 6 )}ms |  ${fmtMs( s.p10 ).padStart( 6 )}ms |  ${fmtMs( s.p90 ).padStart( 6 )}ms`
   );
 }
 

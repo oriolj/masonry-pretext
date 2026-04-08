@@ -53,6 +53,10 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import Masonry from '../../dist/masonry.mjs';
 import { launchPage } from './_harness.mjs';
+import {
+  summarize, fmtCls,
+  COL_WIDTH, GUTTER, CONTAINER_WIDTH, buildItems,
+} from './_bench-stats.mjs';
 
 const __dirname = path.dirname( fileURLToPath( import.meta.url ) );
 const REPO_ROOT = path.resolve( __dirname, '..', '..' );
@@ -68,19 +72,10 @@ const { values } = parseArgs({
 const RUNS = Number( values.runs );
 const N_ITEMS = Number( values.items );
 
-// ─────────────────────────────────────────────────────────────────────
-// Build the test data — same shape as the Astro example so the bench
-// matches what a real SSR demo would do.
-// ─────────────────────────────────────────────────────────────────────
-const COL_WIDTH = 240;
-const GUTTER = 16;
-const COLS = 3;
-const CONTAINER_WIDTH = COLS * COL_WIDTH + ( COLS - 1 ) * GUTTER; // 752
-
-const items = Array.from({ length: N_ITEMS }, ( _, i ) => ({
-  outerWidth: COL_WIDTH,
-  outerHeight: 80 + ( ( i * 37 ) % 220 ),
-}));
+// Same item set as bench-server-layout.mjs and the Astro example, so
+// the headline numbers in the README are directly comparable. See
+// `_bench-stats.mjs` for the constants.
+const items = buildItems( N_ITEMS );
 
 // Pre-compute the positions ONCE in Node — these are what the "pipeline"
 // variant's HTML emits inline. The "control" variant doesn't use them.
@@ -162,33 +157,30 @@ function controlHtml() {
   </div>
   <script src="file://${DIST_MIN_JS}"></script>
   <script>
-    // Yield to the browser's main thread so the FLOW-LAYOUT state gets
-    // painted before masonry repositions items. Without this yield, the
-    // synchronous masonry.layout() call would run BEFORE the first paint
-    // and the user would never see the intermediate state — CLS would be
-    // 0 even though the underlying technique is the buggy one. Real-world
-    // scripts have this latency naturally because of bundle parsing,
-    // network delay, framework hydration, etc. setTimeout(0) is the
-    // smallest faithful simulation of "the script ran on the next tick."
-    // Wait long enough that the browser has definitely composited the
-    // flow-layout frame before masonry starts repositioning items. 200ms
-    // is conservative — real-world hydration latency is typically 50-500ms
-    // depending on bundle size, framework, and connection. The bench
-    // simulates the worst-case visual flash.
-    setTimeout(function () {
-      var grid = document.getElementById('grid');
-      new Masonry(grid, {
-        itemSelector: '.grid-item',
-        columnWidth: ${COL_WIDTH},
-        gutter: ${GUTTER},
-        transitionDuration: 0,
-      });
+    // Wait for the browser to composite the flow-layout frame BEFORE
+    // masonry repositions items. Without this yield, the synchronous
+    // masonry call runs before the first paint and CLS records 0 even
+    // for the buggy pattern. Two rAFs is the smallest faithful "after
+    // first paint" simulation: tick 1 fires before the next paint,
+    // tick 2 fires after it. We're measuring the worst-case-flash
+    // ceiling, not average hydration latency — measured CLS is the
+    // same regardless of whether the delay is 32ms or 200ms.
+    requestAnimationFrame(function () {
       requestAnimationFrame(function () {
+        var grid = document.getElementById('grid');
+        new Masonry(grid, {
+          itemSelector: '.grid-item',
+          columnWidth: ${COL_WIDTH},
+          gutter: ${GUTTER},
+          transitionDuration: 0,
+        });
         requestAnimationFrame(function () {
-          window.__READY = true;
+          requestAnimationFrame(function () {
+            window.__READY = true;
+          });
         });
       });
-    }, 200);
+    });
   </script>
 </body>
 </html>
@@ -259,21 +251,6 @@ async function measureOne( page, url ) {
     cls: window.__CLS,
     maxEntry: window.__CLS_MAX_ENTRY,
   }));
-}
-
-function summarize( values ) {
-  const sorted = [...values].sort( ( a, b ) => a - b );
-  return {
-    median: sorted[ Math.floor( sorted.length / 2 ) ],
-    p10: sorted[ Math.floor( sorted.length * 0.1 ) ],
-    p90: sorted[ Math.floor( sorted.length * 0.9 ) ],
-    max: sorted[ sorted.length - 1 ],
-    min: sorted[0],
-  };
-}
-
-function fmtCls( v ) {
-  return v.toFixed( 4 );
 }
 
 async function main() {

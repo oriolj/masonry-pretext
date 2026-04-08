@@ -31,7 +31,7 @@ export interface MasonrySize {
  */
 export interface MasonryItem {
   element: Element;
-  size: Partial<MasonrySize> & Record<string, number | boolean | undefined>;
+  size: MasonrySize;
   position: { x: number; y: number };
 }
 
