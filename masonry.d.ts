@@ -227,4 +227,113 @@ export default class Masonry {
 
   /** Look up the Masonry instance attached to a given element. */
   static data(elem: Element | string): Masonry | undefined;
+
+  /**
+   * **Pure-Node layout precomputation.** Takes pre-measured item sizes
+   * + container width + column width + gutter, returns absolute
+   * positions. NO DOM, NO instance, NO `this` — runs in any JavaScript
+   * runtime including Node, edge functions, and web workers.
+   *
+   * The killer use case is **server-side cascading-grid layout for
+   * SSR pages**: render your text-driven grid in Node, hand the item
+   * sizes (from `@chenglou/pretext` or any DOM-free measurement library)
+   * to `Masonry.computeLayout`, and emit the resulting positions inline
+   * as `style="left: Xpx; top: Ypx;"`. The client constructs masonry
+   * with `initLayout: false` and adopts the existing positions —
+   * **zero hydration flash**.
+   *
+   * Behavior matches the browser-side layout byte-for-byte. Verified
+   * by `test/visual/compute-layout.mjs`, a Node-only test that asserts
+   * agreement with all 9 browser-rendered visual fixtures.
+   *
+   * Landed in `v5.0.0-dev.17`. See `PRETEXT_SSR_ROADMAP.md` Phase 2.
+   *
+   * @example
+   * ```ts
+   * import Masonry from 'masonry-pretext';
+   * import { prepare, layout } from '@chenglou/pretext';
+   *
+   * const items = await loadFromCMS();
+   * const sizes = items.map(item => {
+   *   const prepared = prepare(item.text, '16px/1.5 Inter');
+   *   const { height } = layout(prepared, 280, 24);
+   *   return { outerWidth: 280, outerHeight: height };
+   * });
+   *
+   * const { positions } = Masonry.computeLayout({
+   *   items: sizes,
+   *   containerWidth: 920,
+   *   columnWidth: 280,
+   *   gutter: 16,
+   * });
+   *
+   * // emit positions inline as style="left: Xpx; top: Ypx;"
+   * ```
+   */
+  static computeLayout(opts: ComputeLayoutOptions): ComputeLayoutResult;
+}
+
+/**
+ * Input shape for `Masonry.computeLayout`. All sizes / widths are in
+ * CSS pixels.
+ */
+export interface ComputeLayoutOptions {
+  /** Pre-measured item sizes. Caller is responsible for measurement
+   *  (use `@chenglou/pretext` for text, hardcoded values, or any
+   *  DOM-free measurement strategy). */
+  items: Array<{ outerWidth: number; outerHeight: number }>;
+
+  /** Container width in pixels. The server has to know this — pick a
+   *  default breakpoint width or compute from request context. */
+  containerWidth: number;
+
+  /** Per-column width in pixels (item width). Becomes the column
+   *  stride after gutter is added. Set to `0` if you're using
+   *  `columnWidthPercent` instead. */
+  columnWidth: number;
+
+  /** Gap between columns in pixels. Default `0`. */
+  gutter?: number;
+
+  /** Adopt the standard masonry `fitWidth` behavior — when `true`,
+   *  the result includes a derived `containerWidth` snapped to the
+   *  number of columns actually used (matching the upstream
+   *  `_getContainerFitWidth` semantics). */
+  fitWidth?: boolean;
+
+  /** Use left-to-right placement instead of the default
+   *  shortest-column-first algorithm. Equivalent to constructing with
+   *  `{ horizontalOrder: true }`. */
+  horizontalOrder?: boolean;
+
+  /** Pre-positioned rectangles that items must pack around. Each entry
+   *  is `{ x, y, width, height }` in pixels relative to the grid
+   *  container. */
+  stamps?: Array<{ x: number; y: number; width: number; height: number }>;
+
+  /** Override for the percentage-column path (#014). When set, derives
+   *  `cols = round(100 / columnWidthPercent)` and recomputes the
+   *  per-column stride from the container width. Use this when your
+   *  columns are sized as a percentage of the container — pass the
+   *  numeric percent (e.g. `20` for 20%). */
+  columnWidthPercent?: number;
+}
+
+/** Output shape from `Masonry.computeLayout`. */
+export interface ComputeLayoutResult {
+  /** One position per input item, in input order. */
+  positions: Array<{ x: number; y: number }>;
+
+  /** Number of columns the layout used. */
+  cols: number;
+
+  /** Per-column stride in pixels (item width + gutter). */
+  columnWidth: number;
+
+  /** Total height of the laid-out grid in pixels. */
+  containerHeight: number;
+
+  /** Only set when `fitWidth: true` was passed — the derived width
+   *  snapped to the number of columns actually used. */
+  containerWidth?: number;
 }

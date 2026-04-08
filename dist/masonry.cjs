@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.16
+ * Masonry PACKAGED v5.0.0-dev.17
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1550,6 +1550,72 @@ var require_masonry = __commonJS({
         var previousWidth = this.containerWidth;
         this.getContainerWidth();
         return previousWidth != this.containerWidth;
+      };
+      Masonry.computeLayout = function(opts) {
+        var items = opts.items || [];
+        var containerWidth = opts.containerWidth;
+        var columnWidth = opts.columnWidth;
+        var gutter = opts.gutter || 0;
+        var fitWidth = !!opts.fitWidth;
+        var horizontalOrder = !!opts.horizontalOrder;
+        var stamps = opts.stamps || [];
+        var cols, stride;
+        if (opts.columnWidthPercent) {
+          cols = Math.max(1, Math.round(100 / opts.columnWidthPercent));
+          stride = (containerWidth + gutter) / cols;
+        } else {
+          stride = columnWidth + gutter;
+          var rawCols = (containerWidth + gutter) / stride;
+          var excess = stride - (containerWidth + gutter) % stride;
+          var mathMethod = excess && excess < 1 ? "round" : "floor";
+          cols = Math.max(1, Math[mathMethod](rawCols));
+        }
+        var colYs = new Array(cols);
+        for (var z = 0; z < cols; z++) colYs[z] = 0;
+        for (var s = 0; s < stamps.length; s++) {
+          var stamp = stamps[s];
+          var firstX = stamp.x;
+          var lastX = firstX + stamp.width;
+          var firstCol = Math.max(0, Math.floor(firstX / stride));
+          var lastCol = Math.floor(lastX / stride);
+          lastCol -= lastX % stride ? 0 : 1;
+          lastCol = Math.min(cols - 1, lastCol);
+          var stampMaxY = stamp.y + stamp.height;
+          for (var c = firstCol; c <= lastCol; c++) {
+            colYs[c] = Math.max(stampMaxY, colYs[c]);
+          }
+        }
+        var state = {
+          cols,
+          colYs,
+          columnWidth: stride,
+          horizontalColIndex: 0,
+          horizontalOrder
+        };
+        var positions = new Array(items.length);
+        for (var i = 0; i < items.length; i++) {
+          var result = placeItem(items[i], state);
+          positions[i] = { x: result.x, y: result.y };
+        }
+        var maxY = colYs.length ? Math.max.apply(Math, colYs) : 0;
+        var resultWidth;
+        if (fitWidth) {
+          var unusedCols = 0;
+          var k = cols;
+          while (--k) {
+            if (colYs[k] !== 0) break;
+            unusedCols++;
+          }
+          resultWidth = (cols - unusedCols) * stride - gutter;
+        }
+        var out = {
+          positions,
+          cols,
+          columnWidth: stride,
+          containerHeight: maxY
+        };
+        if (resultWidth !== void 0) out.containerWidth = resultWidth;
+        return out;
       };
       return Masonry;
     });

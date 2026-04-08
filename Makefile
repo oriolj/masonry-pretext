@@ -46,6 +46,8 @@ test: build
 	@echo
 	@node test/visual/module-smoke.mjs
 	@echo
+	@node test/visual/compute-layout.mjs
+	@echo
 	@node test/visual/no-jquery.mjs
 
 test-update: build
@@ -54,6 +56,8 @@ test-update: build
 	@node test/visual/ssr-smoke.mjs
 	@echo
 	@node test/visual/module-smoke.mjs
+	@echo
+	@node test/visual/compute-layout.mjs
 	@echo
 	@node test/visual/no-jquery.mjs
 

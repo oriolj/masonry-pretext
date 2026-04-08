@@ -586,6 +586,126 @@
     return previousWidth != this.containerWidth;
   };
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Static helper: Masonry.computeLayout (#017 / Phase 2 of
+  // PRETEXT_SSR_ROADMAP.md). Pure-Node entry point — takes pre-measured
+  // item sizes + container width + column width + gutter, returns
+  // absolute positions. NO `this`, NO DOM, NO instance required.
+  //
+  // The killer use case is server-side layout precomputation: render
+  // your text-driven grid in Node, hand the item sizes (from pretext or
+  // any DOM-free measurement library) to Masonry.computeLayout, and
+  // emit the resulting positions inline as `style="left: Xpx; top: Ypx"`.
+  // The client constructs masonry with `initLayout: false` and adopts
+  // the existing absolute positions — no hydration flash.
+  //
+  // Behavior matches `proto.measureColumns` + `proto._getItemLayoutPosition`
+  // + `proto._manageStamp` + `proto._getContainerSize` byte-for-byte.
+  // Verified by `test/visual/compute-layout.mjs`, a Node-only test that
+  // asserts agreement with all 9 browser-rendered fixtures.
+  //
+  // @param {{
+  //   items: Array<{outerWidth: number, outerHeight: number}>,
+  //   containerWidth: number,
+  //   columnWidth: number,
+  //   gutter?: number,
+  //   fitWidth?: boolean,
+  //   horizontalOrder?: boolean,
+  //   stamps?: Array<{x: number, y: number, width: number, height: number}>,
+  //   columnWidthPercent?: number,
+  // }} opts
+  // @returns {{
+  //   positions: Array<{x: number, y: number}>,
+  //   cols: number,
+  //   columnWidth: number,
+  //   containerHeight: number,
+  //   containerWidth?: number,
+  // }}
+  // ─────────────────────────────────────────────────────────────────────
+  Masonry.computeLayout = function( opts ) {
+    var items = opts.items || [];
+    var containerWidth = opts.containerWidth;
+    var columnWidth = opts.columnWidth;
+    var gutter = opts.gutter || 0;
+    var fitWidth = !!opts.fitWidth;
+    var horizontalOrder = !!opts.horizontalOrder;
+    var stamps = opts.stamps || [];
+
+    // ── Replicate measureColumns: derive cols + per-column stride ──
+    // The stride is `columnWidth + gutter` so position.x = stride * col.
+    // Matches the convention from proto.measureColumns where
+    // `this.columnWidth += this.gutter` inflates columnWidth to a stride.
+    var cols, stride;
+    if ( opts.columnWidthPercent ) {
+      // #014 percent path — derive cols from the percent literal
+      cols = Math.max( 1, Math.round( 100 / opts.columnWidthPercent ) );
+      stride = ( containerWidth + gutter ) / cols;
+    } else {
+      stride = columnWidth + gutter;
+      var rawCols = ( containerWidth + gutter ) / stride;
+      var excess = stride - ( containerWidth + gutter ) % stride;
+      var mathMethod = excess && excess < 1 ? 'round' : 'floor';
+      cols = Math.max( 1, Math[ mathMethod ]( rawCols ) );
+    }
+
+    // ── Initialize colYs to zero, then push down by any stamps ──
+    var colYs = new Array( cols );
+    for ( var z = 0; z < cols; z++ ) colYs[z] = 0;
+
+    for ( var s = 0; s < stamps.length; s++ ) {
+      var stamp = stamps[s];
+      var firstX = stamp.x;
+      var lastX = firstX + stamp.width;
+      var firstCol = Math.max( 0, Math.floor( firstX / stride ) );
+      var lastCol = Math.floor( lastX / stride );
+      // lastCol should not go over if multiple of stride #425
+      lastCol -= ( lastX % stride ) ? 0 : 1;
+      lastCol = Math.min( cols - 1, lastCol );
+      var stampMaxY = stamp.y + stamp.height;
+      for ( var c = firstCol; c <= lastCol; c++ ) {
+        colYs[c] = Math.max( stampMaxY, colYs[c] );
+      }
+    }
+
+    // ── Place each item via the pure layer (#016) ──
+    var state = {
+      cols: cols,
+      colYs: colYs,
+      columnWidth: stride,
+      horizontalColIndex: 0,
+      horizontalOrder: horizontalOrder,
+    };
+    var positions = new Array( items.length );
+    for ( var i = 0; i < items.length; i++ ) {
+      var result = placeItem( items[i], state );
+      positions[i] = { x: result.x, y: result.y };
+    }
+
+    // ── Container height = max colY ──
+    var maxY = colYs.length ? Math.max.apply( Math, colYs ) : 0;
+
+    // ── Container width when fitWidth: count unused trailing columns ──
+    var resultWidth;
+    if ( fitWidth ) {
+      var unusedCols = 0;
+      var k = cols;
+      while ( --k ) {
+        if ( colYs[k] !== 0 ) break;
+        unusedCols++;
+      }
+      resultWidth = ( cols - unusedCols ) * stride - gutter;
+    }
+
+    var out = {
+      positions: positions,
+      cols: cols,
+      columnWidth: stride,
+      containerHeight: maxY,
+    };
+    if ( resultWidth !== undefined ) out.containerWidth = resultWidth;
+    return out;
+  };
+
   return Masonry;
 
 }));
