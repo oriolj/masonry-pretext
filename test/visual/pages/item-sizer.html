@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: itemSizer callback (#042 / D.3)</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    /* The fixture relies on the itemSizer callback to declare item
+       heights — the actual DOM elements have NO height set, so
+       getSize() would return 0 for height and the layout would
+       collapse. The discriminator: if itemSizer fires, items have
+       the right heights and the 4th item lands at (60, 90); if
+       itemSizer is broken, item heights are 0 and the 4th item
+       lands at (0, 0).
+
+       NOTE: items have inline width:60 to satisfy outerWidth — the
+       sizer overrides outerHeight only. */
+    #item-sizer .item {
+      width: 60px;
+      height: 1px;  /* a sentinel; sizer overrides */
+      border: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for itemSizer (#042 / D.3). 4 items with
+    `data-module-type` attributes. The itemSizer callback returns
+    different heights based on the type:
+       - 'tall'  → outerHeight: 90
+       - 'short' → outerHeight: 30
+
+    Layout for cw=60, 3 cols, items [tall, short, short, tall]:
+       item 0: tall  → col 0, (0, 0),  colYs = [90, 0, 0]
+       item 1: short → col 1, (60, 0), colYs = [90, 30, 0]
+       item 2: short → col 2, (120,0), colYs = [90, 30, 30]
+       item 3: tall  → col 1, (60,30), colYs = [90, 120, 30]
+
+    The discriminator is item 3's position: (60, 30) only if itemSizer
+    correctly returns the per-type heights. Without the callback the
+    DOM measurements give every item height=1, layout collapses, and
+    item 3 lands somewhere else.
+  -->
+  <div id="item-sizer" class="container">
+    <div class="item" data-module-type="tall"></div>
+    <div class="item" data-module-type="short"></div>
+    <div class="item" data-module-type="short"></div>
+    <div class="item" data-module-type="tall"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#item-sizer');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+      itemSizer: function (element, columnWidth) {
+        var moduleType = element.dataset.moduleType;
+        if (moduleType === 'tall') {
+          return { outerWidth: columnWidth, outerHeight: 90 };
+        }
+        if (moduleType === 'short') {
+          return { outerWidth: columnWidth, outerHeight: 30 };
+        }
+        return null; // fall through to pretextify / DOM
+      },
+    });
+
+    window.__READY = true;
+  </script>
+
+</body>
+</html>

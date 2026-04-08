@@ -265,6 +265,55 @@ const cases = [
       { x: 208, y: 0 },
     ],
   },
+  {
+    // item-sizer (#042 / D.3) — top-level itemSizer callback. Items
+    // are plain data objects (not pre-measured sizes); itemSizer
+    // resolves each one against the column width. Same expected
+    // positions as the browser fixture (test/visual/pages/item-sizer.html).
+    name: 'item-sizer (top-level)',
+    opts: {
+      items: [
+        { type: 'tall'  },
+        { type: 'short' },
+        { type: 'short' },
+        { type: 'tall'  },
+      ],
+      containerWidth: 180,
+      columnWidth: 60,
+      itemSizer: ( item, cw ) => ({
+        outerWidth: cw,
+        outerHeight: item.type === 'tall' ? 90 : 30,
+      }),
+    },
+    expected: [
+      { x: 0,   y: 0  },
+      { x: 60,  y: 0  },
+      { x: 120, y: 0  },
+      { x: 60,  y: 30 }, // discriminating: per-type heights respected
+    ],
+  },
+  {
+    // item-sizer (per-item sizer) — each item carries its own
+    // sizer closure. Useful for heterogeneous grids where each
+    // module type has its own height formula.
+    name: 'item-sizer (per-item)',
+    opts: {
+      items: [
+        { data: { type: 'tall'  }, sizer: ( cw, d ) => ({ outerWidth: cw, outerHeight: 90 }) },
+        { data: { type: 'short' }, sizer: ( cw, d ) => ({ outerWidth: cw, outerHeight: 30 }) },
+        { data: { type: 'short' }, sizer: ( cw, d ) => ({ outerWidth: cw, outerHeight: 30 }) },
+        { data: { type: 'tall'  }, sizer: ( cw, d ) => ({ outerWidth: cw, outerHeight: 90 }) },
+      ],
+      containerWidth: 180,
+      columnWidth: 60,
+    },
+    expected: [
+      { x: 0,   y: 0  },
+      { x: 60,  y: 0  },
+      { x: 120, y: 0  },
+      { x: 60,  y: 30 }, // discriminating: per-item sizer fired
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────

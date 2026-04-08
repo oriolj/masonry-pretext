@@ -667,16 +667,39 @@
   // so the in-place mutation is visible to subsequent calls without
   // an explicit copy-back.
   proto._getItemLayoutPosition = function( item ) {
-    // Pretext fast path (#009): if `options.pretextify(element)` returns a
-    // size, use it as `item.size` and skip `item.getSize()` — which forces a
-    // DOM reflow. Library-agnostic; works with @chenglou/pretext or any
-    // precomputed sizes. See improvements/009-pretext-integration.md.
-    var pretextify = this.options.pretextify || this._builtPretextify;
-    var pretextSize = pretextify && pretextify( item.element );
-    if ( pretextSize ) {
-      item.size = pretextSize;
+    // Resolution order for item.size:
+    //   1. itemSizer(elem, columnWidth)  — #042 / D.3, formula-based
+    //   2. pretextify(elem)              — #009, pure-text reflow-free
+    //   3. item.getSize()                — DOM reflow fallback
+    //
+    // The first non-falsy result wins. Each layer falls through if it
+    // returns null/undefined/false, so consumers can mix-and-match
+    // (e.g., a formula for known module types + pretextify for everything
+    // else + DOM measurement for the long tail).
+    //
+    // ── #042 / D.3 — itemSizer (formula-based callback) ──────────────
+    // The most general size resolver: takes the resolved column width
+    // (already computed by measureColumns) and returns a MasonrySize
+    // for the element. Designed for grids whose item heights are
+    // closed-form functions of column width (news cards, podcast tiles,
+    // weather widgets, banner groups). Runs in BOTH browser and Node
+    // — Masonry.computeLayout consults the same option for SSR.
+    var sizer = this.options.itemSizer;
+    var sizerSize = sizer && sizer( item.element, this.columnWidth );
+    if ( sizerSize ) {
+      item.size = sizerSize;
     } else {
-      item.getSize();
+      // Pretext fast path (#009): if `options.pretextify(element)` returns a
+      // size, use it as `item.size` and skip `item.getSize()` — which forces a
+      // DOM reflow. Library-agnostic; works with @chenglou/pretext or any
+      // precomputed sizes. See improvements/009-pretext-integration.md.
+      var pretextify = this.options.pretextify || this._builtPretextify;
+      var pretextSize = pretextify && pretextify( item.element );
+      if ( pretextSize ) {
+        item.size = pretextSize;
+      } else {
+        item.getSize();
+      }
     }
 
     // ── #040 / D.6 — `'layoutError'` event ─────────────────────────────────
@@ -856,6 +879,7 @@
     var items = opts.items || [];
     var gutter = opts.gutter || 0;
     var stamps = opts.stamps || [];
+    var sharedSizer = opts.itemSizer; // #042 / D.3 — top-level sizer
 
     // Derive cols + stride via the same helper proto.measureColumns uses,
     // so server and client agreement is structural rather than empirical.
@@ -888,7 +912,24 @@
     };
     var positions = new Array( items.length );
     for ( var i = 0; i < items.length; i++ ) {
-      var result = placeItem( items[i], state );
+      // #042 / D.3 — resolve per-item size via, in priority order:
+      //   1. item.sizer(stride, item.data) — per-item shape (closure-based)
+      //   2. opts.itemSizer(item, stride)  — top-level sizer (every item)
+      //   3. item itself, expected to be { outerWidth, outerHeight }
+      // This is the SSR/Node parallel of the proto._getItemLayoutPosition
+      // resolution order. The proto path takes the DOM element; the
+      // pure-Node path takes whatever the consumer passes (typically a
+      // small data object with module type + props).
+      var rawItem = items[i];
+      var size;
+      if ( rawItem && typeof rawItem.sizer === 'function' ) {
+        size = rawItem.sizer( stride, rawItem.data );
+      } else if ( sharedSizer ) {
+        size = sharedSizer( rawItem, stride );
+      } else {
+        size = rawItem;
+      }
+      var result = placeItem( size, state );
       positions[i] = { x: result.x, y: result.y };
     }
 

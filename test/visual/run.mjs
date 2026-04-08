@@ -252,6 +252,28 @@ const cases = [
     ],
   },
   {
+    // itemSizer callback (#042 / D.3) — see test/visual/pages/item-sizer.html
+    // for the discriminator design. 4 items with no DOM-derivable height
+    // (CSS sets height to 1px sentinel); itemSizer returns 90 for 'tall'
+    // and 30 for 'short' based on data-module-type. Items: tall, short,
+    // short, tall. Expected:
+    //   item 0 (tall):  (0,   0)  → colYs = [90, 0,  0]
+    //   item 1 (short): (60,  0)  → colYs = [90, 30, 0]
+    //   item 2 (short): (120, 0)  → colYs = [90, 30, 30]
+    //   item 3 (tall):  (60,  30) → leftmost shortest is col 1 at y=30
+    // Without itemSizer: every item has DOM height 1, layout collapses,
+    // item 3 lands at (0, 1) or similar — not (60, 30).
+    name: 'item-sizer',
+    page: 'item-sizer.html',
+    container: '#item-sizer',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '60px',  top: '30px' }, // discriminating: itemSizer fired
+    ],
+  },
+  {
     // layoutError event (#040 / D.6) — see test/visual/pages/layout-error.html
     // for the discriminator design. 3 visible items + 1 display:none item
     // interleaved at index 2. The hidden item triggers a 'zero-width'

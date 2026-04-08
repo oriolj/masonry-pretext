@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.41
+ * Masonry PACKAGED v5.0.0-dev.42
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -918,7 +918,7 @@ var MasonryGridElement = (() => {
         Masonry.prototype = Object.create(Outlayer.prototype);
         Masonry.prototype.constructor = Masonry;
         Masonry.namespace = "masonry";
-        Masonry.version = true ? "5.0.0-dev.41" : "source";
+        Masonry.version = true ? "5.0.0-dev.42" : "source";
         Masonry.fork = "masonry-pretext";
         Masonry.defaults = Object.assign({}, Outlayer.defaults);
         Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
@@ -1290,12 +1290,18 @@ var MasonryGridElement = (() => {
           this._parentClientWidth = parent ? parent.clientWidth : 0;
         };
         proto._getItemLayoutPosition = function(item) {
-          var pretextify = this.options.pretextify || this._builtPretextify;
-          var pretextSize = pretextify && pretextify(item.element);
-          if (pretextSize) {
-            item.size = pretextSize;
+          var sizer = this.options.itemSizer;
+          var sizerSize = sizer && sizer(item.element, this.columnWidth);
+          if (sizerSize) {
+            item.size = sizerSize;
           } else {
-            item.getSize();
+            var pretextify = this.options.pretextify || this._builtPretextify;
+            var pretextSize = pretextify && pretextify(item.element);
+            if (pretextSize) {
+              item.size = pretextSize;
+            } else {
+              item.getSize();
+            }
           }
           var listeners = this._events && this._events.layoutError;
           if (listeners && listeners.length) {
@@ -1383,6 +1389,7 @@ var MasonryGridElement = (() => {
           var items = opts.items || [];
           var gutter = opts.gutter || 0;
           var stamps = opts.stamps || [];
+          var sharedSizer = opts.itemSizer;
           var derived = deriveCols(
             opts.containerWidth,
             opts.columnWidth,
@@ -1414,7 +1421,16 @@ var MasonryGridElement = (() => {
           };
           var positions = new Array(items.length);
           for (var i = 0; i < items.length; i++) {
-            var result = placeItem(items[i], state);
+            var rawItem = items[i];
+            var size;
+            if (rawItem && typeof rawItem.sizer === "function") {
+              size = rawItem.sizer(stride, rawItem.data);
+            } else if (sharedSizer) {
+              size = sharedSizer(rawItem, stride);
+            } else {
+              size = rawItem;
+            }
+            var result = placeItem(size, state);
             positions[i] = { x: result.x, y: result.y };
           }
           var out = {

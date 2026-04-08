@@ -15,6 +15,56 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.42 — 2026-04-09 — `itemSizer` callback ⭐ (D.3)
+
+> Tag: `v5.0.0-dev.42` · Improvement: [`042-item-sizer-callback.md`](./improvements/042-item-sizer-callback.md) · Closes downstream consumer ask **D.3** — the highest-leverage Tier 1 item
+
+A new `itemSizer(element, columnWidth) → MasonrySize` constructor option lets non-text grids declare per-item heights as closed-form functions of column width. The same callback shape works in pure-Node via `Masonry.computeLayout({ itemSizer })`, so a single height formula can live in one place and apply identically server- and client-side.
+
+**This is the structural unblocker for mixed-media SSR grids.** News cards (image aspect-ratio + title lines), podcast tiles, weather widgets, banner groups — anything whose height is computable from the column width — can now describe its sizes in one callback that runs in both Astro/Next.js frontmatter and the browser.
+
+```ts
+const itemSizer = (element, columnWidth) => {
+  const moduleType = element.dataset.moduleType;
+  if (moduleType === 'NewsCard') {
+    const aspect = parseFloat(element.dataset.aspectRatio || '1.78');
+    return { outerWidth: columnWidth, outerHeight: columnWidth / aspect + 124 };
+  }
+  if (moduleType === 'PodcastTile') {
+    return { outerWidth: columnWidth, outerHeight: columnWidth + 56 };
+  }
+  return null; // fall through to pretextify / DOM measurement
+};
+
+// Server (Astro frontmatter):
+const layout = Masonry.computeLayout({
+  items: modules.map(m => ({ moduleType: m.type, aspectRatio: m.aspectRatio })),
+  itemSizer: (item, cw) => itemSizer({ dataset: item }, cw),
+  containerWidth: 1248,
+  columnWidth: 280,
+  gutter: 16,
+});
+
+// Client:
+new Masonry(grid, { itemSizer, columnWidth: 280, gutter: 16 });
+```
+
+**Resolution order in `_getItemLayoutPosition`:**
+
+1. `itemSizer(element, columnWidth)` ← runs first
+2. `pretextify(element)` ← falls through if (1) returns null
+3. `item.getSize()` ← falls through if (2) returns null
+
+Each layer falls through if it returns `null | undefined | false`, so consumers can mix-and-match (e.g., a sizer for known module types, `pretextify` for pure-text items, DOM measurement for the long tail).
+
+**`Masonry.computeLayout` accepts three item shapes:**
+
+- `{ outerWidth, outerHeight }` — original pre-measured shape, unchanged
+- `{ data, sizer(stride, data) }` — per-item closure (heterogeneous grids)
+- generic data + top-level `itemSizer(item, stride)` — single resolver for every item
+
+**Cost:** +80 B gzipped on `dist/masonry.pkgd.min.js`. New `item-sizer.html` discriminating fixture (4 items with `height: 1px` sentinel that the sizer must override). New compute-layout cases for both top-level and per-item closure shapes. All test gates green.
+
 ### v5.0.0-dev.41 — 2026-04-09 — Multi-breakpoint `Masonry.computeLayouts` (D.1)
 
 > Tag: `v5.0.0-dev.41` · Improvement: [`041-multi-breakpoint-compute-layouts.md`](./improvements/041-multi-breakpoint-compute-layouts.md) · Closes downstream consumer ask **D.1**

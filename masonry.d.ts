@@ -239,6 +239,61 @@ export interface MasonryOptions {
   pretextify?(element: Element): MasonrySize | null | undefined | false;
 
   /**
+   * **Generalized per-item size callback** (#042 / D.3). Runs in BOTH
+   * browser (`new Masonry(grid, { itemSizer })`) and pure-Node
+   * (`Masonry.computeLayout({ itemSizer, ... })`), with the resolved
+   * column stride as input. Returning a `MasonrySize` skips both
+   * `pretextify` and `item.getSize()`; returning `null | undefined |
+   * false` falls through to `pretextify` then `item.getSize()`.
+   *
+   * **The most general size resolver.** Designed for grids whose item
+   * heights are closed-form functions of column width — news cards
+   * (image aspect-ratio + title lines), podcast tiles, weather widgets,
+   * banner groups, etc. Lets a single source-of-truth height formula
+   * live in one place (the consumer's options) and apply identically
+   * server- and client-side.
+   *
+   * Example (React + Astro SSR):
+   *
+   * ```ts
+   * const itemSizer = (element, columnWidth) => {
+   *   switch (element.dataset.moduleType) {
+   *     case 'NewsCard':
+   *       const aspect = parseFloat(element.dataset.aspectRatio || '1.78');
+   *       return { outerWidth: columnWidth, outerHeight: columnWidth / aspect + 124 };
+   *     case 'PodcastTile':
+   *       return { outerWidth: columnWidth, outerHeight: columnWidth + 56 };
+   *     case 'WeatherWidget':
+   *       return { outerWidth: columnWidth, outerHeight: 300 };
+   *     default:
+   *       return null; // fall through to pretextify / DOM
+   *   }
+   * };
+   *
+   * // Server (Astro frontmatter):
+   * const layout = Masonry.computeLayout({
+   *   items: modules.map(m => ({ moduleType: m.type, aspectRatio: m.aspect })),
+   *   itemSizer: (item, cw) => itemSizer({ dataset: item }, cw),
+   *   containerWidth: 1248,
+   *   columnWidth: 280,
+   *   gutter: 16,
+   * });
+   *
+   * // Client:
+   * new Masonry(grid, { itemSizer, columnWidth: 280, gutter: 16 });
+   * ```
+   *
+   * Resolution order in `_getItemLayoutPosition`:
+   *
+   *   1. `itemSizer(element, columnWidth)`  ← runs first
+   *   2. `pretextify(element)`              ← falls through if (1) returns null
+   *   3. `item.getSize()`                   ← falls through if (2) returns null
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/042-item-sizer-callback.md
+   */
+  itemSizer?(element: Element, columnWidth: number): MasonrySize | null | undefined | false;
+
+  /**
    * **Suppress the one-time `console.info` banner for this instance.**
    * Same suppression as `Masonry.silent = true` (which is global), but
    * scoped to a single constructor call. Useful when you want one
@@ -473,10 +528,26 @@ export interface Breakpoint {
  * CSS pixels.
  */
 export interface ComputeLayoutOptions {
-  /** Pre-measured item sizes. Caller is responsible for measurement
-   *  (use `@chenglou/pretext` for text, hardcoded values, or any
-   *  DOM-free measurement strategy). */
-  items: Array<{ outerWidth: number; outerHeight: number }>;
+  /** Item descriptors. Each entry can be one of three shapes:
+   *
+   *   1. **Pre-measured size**: `{ outerWidth, outerHeight }` —
+   *      the original shape; works with manually measured items
+   *      or `@chenglou/pretext` output.
+   *   2. **Per-item closure**: `{ data, sizer(stride, data) → MasonrySize }` —
+   *      lets each item carry its own size formula. Useful for
+   *      heterogeneous grids where each item knows how to compute
+   *      its own height from the resolved column width.
+   *   3. **Generic data**: any object — relies on the top-level
+   *      `itemSizer(item, stride)` option to resolve sizes.
+   *
+   * Resolution order per item: per-item `sizer` first, then top-level
+   * `itemSizer`, then the item itself. The first non-null result wins.
+   */
+  items: Array<
+    | { outerWidth: number; outerHeight: number }
+    | { data: unknown; sizer: ( stride: number, data: unknown ) => MasonrySize }
+    | unknown
+  >;
 
   /** Container width in pixels. The server has to know this — pick a
    *  default breakpoint width or compute from request context. */
@@ -518,6 +589,32 @@ export interface ComputeLayoutOptions {
    *  index. Default is leftmost-shortest. See `MasonryOptions.pickColumn`
    *  for the full doc. */
   pickColumn?: ( colGroup: number[] ) => number;
+
+  /** **Top-level itemSizer** (#042 / D.3). Pure-Node parallel of the
+   *  `MasonryOptions.itemSizer` browser callback. Receives each
+   *  `items[i]` and the resolved column stride; returns the size to
+   *  use for placement. Each item's per-entry `sizer` (if present)
+   *  takes precedence over this top-level callback.
+   *
+   *  Example:
+   *
+   *  ```ts
+   *  const layout = Masonry.computeLayout({
+   *    items: modules.map(m => ({ type: m.type, aspect: m.aspectRatio })),
+   *    itemSizer: (item, cw) => {
+   *      switch (item.type) {
+   *        case 'NewsCard':     return { outerWidth: cw, outerHeight: cw / item.aspect + 124 };
+   *        case 'PodcastTile':  return { outerWidth: cw, outerHeight: cw + 56 };
+   *        default:             return { outerWidth: cw, outerHeight: 200 };
+   *      }
+   *    },
+   *    containerWidth: 1248,
+   *    columnWidth: 280,
+   *    gutter: 16,
+   *  });
+   *  ```
+   */
+  itemSizer?: ( item: unknown, columnWidth: number ) => MasonrySize;
 
   /**
    * **`pretextify` shorthand** (#035 / PRETEXT_SSR Phase 6). Convenience
