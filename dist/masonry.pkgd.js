@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.7
+ * Masonry PACKAGED v5.0.0-dev.8
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -240,9 +240,6 @@ var Masonry = (() => {
           }
           return a;
         };
-        utils.modulo = function(num, div) {
-          return (num % div + div) % div;
-        };
         var arraySlice = Array.prototype.slice;
         utils.makeArray = function(obj) {
           if (Array.isArray(obj)) {
@@ -261,14 +258,6 @@ var Masonry = (() => {
           var index = ary.indexOf(obj);
           if (index != -1) {
             ary.splice(index, 1);
-          }
-        };
-        utils.getParent = function(elem, selector) {
-          while (elem.parentNode && elem != document.body) {
-            elem = elem.parentNode;
-            if (matchesSelector(elem, selector)) {
-              return elem;
-            }
           }
         };
         utils.getQueryElement = function(elem) {

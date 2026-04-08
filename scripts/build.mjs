@@ -395,6 +395,40 @@ function setup() {
   if ( typeof document === 'undefined' ) return;
   var readyState = document.readyState;`,
       },
+      // ── #008 — delete fizzy-ui-utils methods unused by masonry/outlayer ────
+      // Audit (greppped masonry.js + node_modules/outlayer/{outlayer,item}.js)
+      // shows utils.modulo and utils.getParent are NEVER called from the
+      // masonry consumption path. They're 7 LOC apiece. esbuild can't
+      // tree-shake them because they're properties on a `utils` object — the
+      // whole object is reachable, all properties stay. Delete them
+      // explicitly via build-time transforms.
+      {
+        description: '[#008] fizzy-ui-utils.js — delete unused utils.modulo',
+        find: `// ----- modulo ----- //
+
+utils.modulo = function( num, div ) {
+  return ( ( num % div ) + div ) % div;
+};
+
+`,
+        replace: ``,
+      },
+      {
+        description: '[#008] fizzy-ui-utils.js — delete unused utils.getParent',
+        find: `// ----- getParent ----- //
+
+utils.getParent = function( elem, selector ) {
+  while ( elem.parentNode && elem != document.body ) {
+    elem = elem.parentNode;
+    if ( matchesSelector( elem, selector ) ) {
+      return elem;
+    }
+  }
+};
+
+`,
+        replace: ``,
+      },
       {
         description: '[#006 no-jquery] fizzy-ui-utils.js htmlInit — delete `var jQuery = window.jQuery;`',
         find: `    var dataOptionsAttr = dataAttr + '-options';

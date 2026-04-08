@@ -17,6 +17,46 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.8 — 2026-04-08 — Delete unused fizzy-ui-utils methods (§ L.4 partial)
+
+> Tag: `v5.0.0-dev.8` · Improvement: [`008-delete-unused-fizzy-utils.md`](./improvements/008-delete-unused-fizzy-utils.md)
+
+Audit-and-prune pass on `fizzy-ui-utils`. Grepped every `utils.X` call site in `masonry.js` + `outlayer/{outlayer,item}.js` to identify methods that are never reached from the masonry consumption path. **Two methods are dead:** `utils.modulo` and `utils.getParent`. esbuild can't tree-shake them because they're properties on a `utils` object — the whole object stays reachable, all properties stay. Deleted explicitly via build-time exact-string transforms.
+
+### Removed (from the bundle, not from the dep on disk)
+
+- **`utils.modulo`** — `(num, div) => ((num % div) + div) % div`. Never called from masonry/outlayer.
+- **`utils.getParent`** — DOM walk to find a matching ancestor. Never called from masonry/outlayer.
+
+### Numbers
+
+| File | Metric | pre-008 | v5.0.0-dev.8 | Δ |
+|---|---|---:|---:|---:|
+| `dist/masonry.pkgd.js` | raw | 49,191 | **48,829** | **−0.74 %** |
+| `dist/masonry.pkgd.js` | gzip | 9,271 | **9,200** | **−0.77 %** |
+| `dist/masonry.pkgd.min.js` | raw | 21,596 | **21,458** | **−0.64 %** |
+| `dist/masonry.pkgd.min.js` | gzip | 6,924 | **6,871** | **−0.77 %** |
+| `dist/masonry.pkgd.min.js` | brotli | 6,245 | **6,202** | **−0.69 %** |
+| Visual + SSR + no-jquery gates | passing | all | all | unchanged |
+
+### vs upstream-frozen v4.2.2
+
+| Metric | v4.2.2 | v5.0.0-dev.8 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,103 | **21,458** | **−2,645 B (−10.97 %)** |
+| `dist/masonry.pkgd.min.js` gzip | 7,367 | **6,871** | **−496 B (−6.73 %)** |
+| `dist/masonry.pkgd.min.js` brotli | 6,601 | **6,202** | **−399 B (−6.04 %)** |
+
+### Predicted vs actual
+
+All three numeric predictions inside their bands, all at the **low end** — expected for a deletion this small (~15 LOC of source).
+
+### Migration notes
+
+- **None.** Behavior is unchanged in any browser. CDN consumers should regenerate SRI hashes (bundle bytes have changed).
+
+---
+
 ## v5.0.0-dev.7 — 2026-04-08 — Delete get-size box-sizing setup (§ L.3)
 
 > Tag: `v5.0.0-dev.7` · Improvement: [`007-delete-getsize-boxsizing-setup.md`](./improvements/007-delete-getsize-boxsizing-setup.md)
