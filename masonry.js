@@ -185,6 +185,59 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────
+  // #043 / D.7 — measureFromAttributes helper
+  //
+  // Walks an element looking for a hint of its aspect ratio (and thus
+  // its reserved height for a given column width):
+  //
+  //   1. `[data-aspect-ratio="1.78"]` on the element itself
+  //   2. First `<img width height>` child (any depth via querySelector)
+  //   3. First `<img style="aspect-ratio: 16/9">` child (or any unit)
+  //
+  // Returns a `{outerWidth, outerHeight}` size, or null if no hint is
+  // found (the resolution chain falls through to pretextify / getSize).
+  //
+  // The point of the option is to give masonry a closed-form item size
+  // BEFORE images actually load — eliminating the post-load relayout
+  // cycle on the dynamic-content path. Modern browsers reserve the box
+  // natively via the `aspect-ratio` CSS property, but the per-item
+  // ResizeObserver still fires during the reserved → loaded transition
+  // even though the box doesn't change. This option short-circuits that.
+  // ─────────────────────────────────────────────────────────────────────
+  function measureFromAttributes( elem, columnWidth ) {
+    // Layer 1: data-aspect-ratio on the item itself.
+    var dataRatio = elem.getAttribute && elem.getAttribute( 'data-aspect-ratio' );
+    if ( dataRatio ) {
+      var n = parseFloat( dataRatio );
+      if ( n > 0 ) {
+        return { outerWidth: columnWidth, outerHeight: columnWidth / n };
+      }
+    }
+    // Layer 2 + 3: walk to first <img>.
+    if ( !elem.querySelector ) return null;
+    var img = elem.querySelector( 'img[width][height], img[style*="aspect-ratio"]' );
+    if ( !img ) return null;
+    // Prefer the width/height attributes over the inline style — they
+    // are simpler to parse and more common.
+    var w = parseFloat( img.getAttribute( 'width' ) );
+    var h = parseFloat( img.getAttribute( 'height' ) );
+    if ( w > 0 && h > 0 ) {
+      return { outerWidth: columnWidth, outerHeight: columnWidth * ( h / w ) };
+    }
+    // Inline style aspect-ratio (e.g., "aspect-ratio: 16 / 9" or "1.78").
+    var style = img.getAttribute( 'style' ) || '';
+    var match = style.match( /aspect-ratio\s*:\s*([\d.]+)(?:\s*\/\s*([\d.]+))?/ );
+    if ( match ) {
+      var num = parseFloat( match[1] );
+      var den = match[2] ? parseFloat( match[2] ) : 1;
+      if ( num > 0 && den > 0 ) {
+        return { outerWidth: columnWidth, outerHeight: columnWidth * ( den / num ) };
+      }
+    }
+    return null;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
   // Pure-math placement layer (#016). Called from both
   // `proto._getItemLayoutPosition` (DOM adapter) and `Masonry.computeLayout`
   // (pure-Node SSR pre-computation, #017) so server and client share the
@@ -667,39 +720,33 @@
   // so the in-place mutation is visible to subsequent calls without
   // an explicit copy-back.
   proto._getItemLayoutPosition = function( item ) {
-    // Resolution order for item.size:
+    // Resolution order for item.size — first non-null result wins:
     //   1. itemSizer(elem, columnWidth)  — #042 / D.3, formula-based
-    //   2. pretextify(elem)              — #009, pure-text reflow-free
-    //   3. item.getSize()                — DOM reflow fallback
+    //   2. measureFromAttributes         — #043 / D.7, <img width height>
+    //   3. pretextify(elem)              — #009, pure-text reflow-free
+    //   4. item.getSize()                — DOM reflow fallback
     //
-    // The first non-falsy result wins. Each layer falls through if it
-    // returns null/undefined/false, so consumers can mix-and-match
-    // (e.g., a formula for known module types + pretextify for everything
-    // else + DOM measurement for the long tail).
-    //
-    // ── #042 / D.3 — itemSizer (formula-based callback) ──────────────
-    // The most general size resolver: takes the resolved column width
-    // (already computed by measureColumns) and returns a MasonrySize
-    // for the element. Designed for grids whose item heights are
-    // closed-form functions of column width (news cards, podcast tiles,
-    // weather widgets, banner groups). Runs in BOTH browser and Node
-    // — Masonry.computeLayout consults the same option for SSR.
+    // Each layer falls through if it returns null/undefined/false, so
+    // consumers can mix-and-match (e.g., a sizer for known module types
+    // + measureFromAttributes for image-driven items + pretextify for
+    // text + DOM measurement for the long tail). The chain is laid out
+    // as a flat sequence of `if (!size)` checks rather than nested
+    // branches so each new resolver costs roughly one if-check, not a
+    // duplicated trailing fall-through.
+    var size = null;
     var sizer = this.options.itemSizer;
-    var sizerSize = sizer && sizer( item.element, this.columnWidth );
-    if ( sizerSize ) {
-      item.size = sizerSize;
-    } else {
-      // Pretext fast path (#009): if `options.pretextify(element)` returns a
-      // size, use it as `item.size` and skip `item.getSize()` — which forces a
-      // DOM reflow. Library-agnostic; works with @chenglou/pretext or any
-      // precomputed sizes. See improvements/009-pretext-integration.md.
+    if ( sizer ) size = sizer( item.element, this.columnWidth );
+    if ( !size && this.options.measureFromAttributes ) {
+      size = measureFromAttributes( item.element, this.columnWidth );
+    }
+    if ( !size ) {
       var pretextify = this.options.pretextify || this._builtPretextify;
-      var pretextSize = pretextify && pretextify( item.element );
-      if ( pretextSize ) {
-        item.size = pretextSize;
-      } else {
-        item.getSize();
-      }
+      if ( pretextify ) size = pretextify( item.element );
+    }
+    if ( size ) {
+      item.size = size;
+    } else {
+      item.getSize();
     }
 
     // ── #040 / D.6 — `'layoutError'` event ─────────────────────────────────

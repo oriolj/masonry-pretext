@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.42
+ * Masonry PACKAGED v5.0.0-dev.43
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -937,7 +937,7 @@ var require_masonry = __commonJS({
       Masonry.prototype = Object.create(Outlayer.prototype);
       Masonry.prototype.constructor = Masonry;
       Masonry.namespace = "masonry";
-      Masonry.version = true ? "5.0.0-dev.42" : "source";
+      Masonry.version = true ? "5.0.0-dev.43" : "source";
       Masonry.fork = "masonry-pretext";
       Masonry.defaults = Object.assign({}, Outlayer.defaults);
       Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
@@ -1022,6 +1022,33 @@ var require_masonry = __commonJS({
           }
         }
         return found;
+      }
+      function measureFromAttributes(elem, columnWidth) {
+        var dataRatio = elem.getAttribute && elem.getAttribute("data-aspect-ratio");
+        if (dataRatio) {
+          var n = parseFloat(dataRatio);
+          if (n > 0) {
+            return { outerWidth: columnWidth, outerHeight: columnWidth / n };
+          }
+        }
+        if (!elem.querySelector) return null;
+        var img = elem.querySelector('img[width][height], img[style*="aspect-ratio"]');
+        if (!img) return null;
+        var w = parseFloat(img.getAttribute("width"));
+        var h = parseFloat(img.getAttribute("height"));
+        if (w > 0 && h > 0) {
+          return { outerWidth: columnWidth, outerHeight: columnWidth * (h / w) };
+        }
+        var style = img.getAttribute("style") || "";
+        var match = style.match(/aspect-ratio\s*:\s*([\d.]+)(?:\s*\/\s*([\d.]+))?/);
+        if (match) {
+          var num = parseFloat(match[1]);
+          var den = match[2] ? parseFloat(match[2]) : 1;
+          if (num > 0 && den > 0) {
+            return { outerWidth: columnWidth, outerHeight: columnWidth * (den / num) };
+          }
+        }
+        return null;
       }
       function placeItem(size, state) {
         var columnWidth = state.columnWidth;
@@ -1309,18 +1336,20 @@ var require_masonry = __commonJS({
         this._parentClientWidth = parent ? parent.clientWidth : 0;
       };
       proto._getItemLayoutPosition = function(item) {
+        var size = null;
         var sizer = this.options.itemSizer;
-        var sizerSize = sizer && sizer(item.element, this.columnWidth);
-        if (sizerSize) {
-          item.size = sizerSize;
-        } else {
+        if (sizer) size = sizer(item.element, this.columnWidth);
+        if (!size && this.options.measureFromAttributes) {
+          size = measureFromAttributes(item.element, this.columnWidth);
+        }
+        if (!size) {
           var pretextify = this.options.pretextify || this._builtPretextify;
-          var pretextSize = pretextify && pretextify(item.element);
-          if (pretextSize) {
-            item.size = pretextSize;
-          } else {
-            item.getSize();
-          }
+          if (pretextify) size = pretextify(item.element);
+        }
+        if (size) {
+          item.size = size;
+        } else {
+          item.getSize();
         }
         var listeners = this._events && this._events.layoutError;
         if (listeners && listeners.length) {

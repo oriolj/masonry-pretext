@@ -15,6 +15,37 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.43 — 2026-04-09 — `measureFromAttributes` option (D.7)
+
+> Tag: `v5.0.0-dev.43` · Improvement: [`043-measure-from-attributes.md`](./improvements/043-measure-from-attributes.md) · Closes downstream consumer ask **D.7**
+
+A new `measureFromAttributes: true` constructor option lets masonry compute item heights as closed-form functions of `<img width height>` attributes (or `[data-aspect-ratio]`, or `<img style="aspect-ratio: …">`) without waiting for images to actually load. **Eliminates the post-image-load relayout cycle on the dynamic-content path** — modern browsers reserve the box natively via the CSS `aspect-ratio` property, but the per-item ResizeObserver still fires during the reserved → loaded transition; this option pre-records the expected size so masonry skips the spurious relayout.
+
+```ts
+new Masonry(grid, {
+  measureFromAttributes: true,
+  columnWidth: 280,
+  gutter: 16,
+});
+
+// Items can carry hints in three forms:
+// 1. <div class="item" data-aspect-ratio="1.78"> ...
+// 2. <div class="item"><img width="280" height="157" src="..."> ...
+// 3. <div class="item"><img style="aspect-ratio: 16 / 9" src="..."> ...
+```
+
+**Aspect-ratio sources** (in priority order):
+
+1. `[data-aspect-ratio="1.78"]` on the item itself
+2. First `<img width height>` child (any depth via `querySelector`)
+3. First `<img style="aspect-ratio: 16/9">` child (handles `16/9`, `1.78`, etc.)
+
+The first hint found wins; if none, masonry falls through to `pretextify` then `item.getSize()`. Enabling the option on a grid with mixed item types is safe — items without aspect-ratio hints behave exactly as if the option were `false`.
+
+**Browser-side only.** `Masonry.computeLayout` consumers should use the more general [`itemSizer` callback](#v500-dev42--2026-04-09--itemsizer-callback--d3) (D.3) — they have raw data objects, not DOM elements with `<img>` children.
+
+**Bonus: the size resolution chain in `_getItemLayoutPosition` was refactored** from nested if/else branches to a flat `if (!size)` sequence. Adding new resolvers later costs roughly one if-check instead of duplicated trailing fall-through code. Net cost of D.7 is +228 B gzipped (252 B for the new resolver, −24 B from the refactor savings).
+
 ### v5.0.0-dev.42 — 2026-04-09 — `itemSizer` callback ⭐ (D.3)
 
 > Tag: `v5.0.0-dev.42` · Improvement: [`042-item-sizer-callback.md`](./improvements/042-item-sizer-callback.md) · Closes downstream consumer ask **D.3** — the highest-leverage Tier 1 item

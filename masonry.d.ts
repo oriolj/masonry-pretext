@@ -294,6 +294,40 @@ export interface MasonryOptions {
   itemSizer?(element: Element, columnWidth: number): MasonrySize | null | undefined | false;
 
   /**
+   * **Pre-reserve item heights from `<img width height>` attributes**
+   * (#043 / D.7). When set, masonry walks each item element looking
+   * for an aspect-ratio hint:
+   *
+   *   1. `[data-aspect-ratio="1.78"]` on the item itself
+   *   2. First `<img width height>` child (any depth via `querySelector`)
+   *   3. First `<img style="aspect-ratio: …">` child (handles `16/9`,
+   *      `1.78`, etc.)
+   *
+   * The first hint found wins; if none, masonry falls through to
+   * `pretextify` then `item.getSize()`. The reserved height is computed
+   * from `columnWidth * (imgHeight / imgWidth)`, so a 16:9 image in a
+   * 280px column gets `outerHeight = 157.5`.
+   *
+   * **Why bother in modern browsers?** They DO reserve the box via the
+   * `aspect-ratio` CSS property, so `getBoundingClientRect()` returns
+   * the right size before the image actually loads. The problem is
+   * that the per-item ResizeObserver (#012) still fires during the
+   * reserved → loaded transition (the box doesn't change but the event
+   * still dispatches), causing wasted relayouts. This option pre-records
+   * the expected size so masonry skips the relayout when the actual
+   * size matches.
+   *
+   * **Resolution order**: `itemSizer` → `measureFromAttributes` →
+   * `pretextify` → `item.getSize()`. Each layer falls through on a
+   * null result.
+   *
+   * Default `false`.
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/043-measure-from-attributes.md
+   */
+  measureFromAttributes?: boolean;
+
+  /**
    * **Suppress the one-time `console.info` banner for this instance.**
    * Same suppression as `Masonry.silent = true` (which is global), but
    * scoped to a single constructor call. Useful when you want one

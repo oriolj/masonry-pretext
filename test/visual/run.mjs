@@ -252,6 +252,23 @@ const cases = [
     ],
   },
   {
+    // measureFromAttributes (#043 / D.7) — see
+    // test/visual/pages/measure-from-attributes.html for the discriminator
+    // design. 4 items each with a hidden 1×1 SVG <img> declaring different
+    // aspect ratios via width/height attrs (60×90, 60×30, 60×30, 60×90).
+    // Items have CSS height: 1px sentinel; measureFromAttributes overrides.
+    // Same expected layout as item-sizer.
+    name: 'measure-from-attributes',
+    page: 'measure-from-attributes.html',
+    container: '#measure-from-attributes',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '60px',  top: '30px' }, // discriminating: img attrs respected
+    ],
+  },
+  {
     // itemSizer callback (#042 / D.3) — see test/visual/pages/item-sizer.html
     // for the discriminator design. 4 items with no DOM-derivable height
     // (CSS sets height to 1px sentinel); itemSizer returns 90 for 'tall'
