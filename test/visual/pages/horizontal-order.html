@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: horizontal order</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <div id="horizontal-order" class="container">
+    <div class="item h3">1</div>
+    <div class="item h2">2</div>
+    <div class="item">3</div>
+    <div class="item">4</div>
+    <div class="item h3">5</div>
+    <div class="item h2">6</div>
+    <div class="item">7</div>
+    <div class="item">8</div>
+    <div class="item">9</div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    window.__MSNRY = new Masonry('#horizontal-order', {
+      columnWidth: 60,
+      horizontalOrder: true,
+      transitionDuration: 0,
+    });
+    window.__READY = true;
+  </script>
+
+</body>
+</html>

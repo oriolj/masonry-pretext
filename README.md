@@ -18,6 +18,16 @@ The goals of this fork are narrow and concrete:
 
 Every change in this fork has to produce a **measurable** improvement in speed, bundle size, or UX. Cosmetic refactors and abstractions without a benchmark or before/after number are explicitly out of scope. The full design notes, dependency audit, and prioritized work list live in [`FORK_ROADMAP.md`](./FORK_ROADMAP.md).
 
+### Key improvements vs upstream
+
+User-visible wins that have already landed in the fork. Each entry links to the per-change record in `improvements/` and the git tag where the change first shipped.
+
+> Until v5.0.0 ships, every line below is from a `5.0.0-dev.N` pre-release tag. The runtime library (`dist/masonry.pkgd.min.js`) is **byte-identical to upstream v4.2.2** at this stage — the bundle-shrinking work begins in improvement `004`. The wins so far are about toolchain health, not runtime size.
+
+| Tag | What you get | Number |
+|---|---|---|
+| `v5.0.0-dev.1` | **97% smaller `npm install`.** Dropped the broken Gulp 3 + JSHint + RequireJS + QUnit + Bower toolchain. `npm install` goes from **349 → 10 packages** (the original devDeps had multiple unmaintained packages with open security advisories that will never be patched). See [`improvements/001-foundation-cleanup.md`](./improvements/001-foundation-cleanup.md). |
+
 ### Maintenance & contributions
 
 - **The fork is primarily developed by Claude** (Anthropic's AI coding assistant) under the direction of the maintainer.

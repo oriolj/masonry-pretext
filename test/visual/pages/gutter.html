@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: gutter</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <div id="gutter" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item h3"></div>
+    <div class="item w2"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    window.__MSNRY = new Masonry('#gutter', {
+      columnWidth: 60,
+      gutter: 20,
+      transitionDuration: 0,
+    });
+    window.__READY = true;
+  </script>
+
+</body>
+</html>

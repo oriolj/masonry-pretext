@@ -681,3 +681,159 @@ The original ordering at the top of this file still holds, but with these insert
 13. § P.7 — IntersectionObserver virtualization **(speculative, post-v5)**
 
 Cut **v5.0.0** at the end of step 11. § 2.4 + § P.7 belong to v5.1+.
+
+---
+
+# Methodology
+
+This section is the contract for how every change in this fork is justified, validated, and recorded. It is intentionally narrow: the fork's whole reason to exist is *measurable* improvement, so the measurement and verification protocol is the spine of the work.
+
+## The change loop
+
+Every change — even a one-line deletion — goes through this loop:
+
+1. **Capture baseline.** Run `scripts/measure.sh` and `npm run test:visual` against the current state. Save the output.
+2. **State the hypothesis.** In the commit body or release-notes entry, write what is expected to change and by how much. Example: *"Deleting matchesSelector polyfill should reduce dist/masonry.pkgd.min.js by ~600 bytes raw, ~250 bytes gzipped, with no behavior change."*
+3. **Make the change.**
+4. **Re-run measurements.** `scripts/measure.sh` again, diff against baseline.
+5. **Re-run tests.** Visual + position-assertion tests must pass identically (same screenshot diff thresholds, same position numbers).
+6. **Compare to hypothesis.** If the hypothesis was wrong (e.g. "expected smaller, got bigger"), the change does not land — investigate why.
+7. **Record actual numbers.** Append to `FORK_RELEASE_NOTES.md` under the active version with both the *predicted* and the *actual* delta. Predictions that miss are themselves data — they expose where the mental model is wrong.
+
+The point of step 6 is that **predicted improvements must be verified, not assumed**. The fork has been bitten before by reasoning like "removing dead code obviously shrinks the bundle" — minifiers can already eliminate unreachable branches, vendor-prefix detection can become inline constants, etc. Until measured, an improvement is a guess.
+
+## Measurement protocol
+
+`scripts/measure.sh` is the single source of truth for "how big / how slow". It prints a stable, parseable table of:
+
+- **Source files:** raw bytes, gzipped, brotli, line count for `masonry.js`, `dist/masonry.pkgd.js`, `dist/masonry.pkgd.min.js`.
+- **Repository:** total tracked files, total LOC.
+- **Dependencies:** count of `dependencies` and `devDependencies` from `package.json`.
+- **Build artifacts:** size of every file in `dist/`.
+
+The script writes its output to stdout and (when invoked with `--save <label>`) appends a row to `metrics/history.tsv` so the trend over time is auditable.
+
+Always run `scripts/measure.sh` from a clean working tree (no `node_modules` build artifacts mixed in) so numbers are reproducible.
+
+### Why these specific metrics
+
+- **Raw bytes** is what the source file is on disk. Useful for sanity-checking edits.
+- **Gzipped** is what users actually download. This is the headline metric.
+- **Brotli** is what most CDNs serve in 2026. Tracked separately because it can compress differently than gzip — particularly on long repeated patterns.
+- **LOC** is for human maintenance burden, not for performance. Never used as a perf claim by itself.
+- **Dep count** is supply-chain surface area.
+
+### Don't trust hand-wavy claims
+
+If a roadmap entry says "expected ~30% smaller", it must be backed up by an actual minifier run on a real diff. Minifiers (esbuild, terser, swc) are aggressive — they DCE unreachable code, inline constants, hoist common subexpressions. **Removing source LOC does not always remove minified bytes.** A change that deletes 50 lines of dead branches the minifier was already eliminating produces zero minified-byte savings. We measure to find out.
+
+## Test strategy
+
+Three layers, all live in `test/`:
+
+### Layer 1 — Position assertions (`test/visual/`)
+
+For every layout option Masonry supports (basic, fit-width, gutter, stamp, horizontal-order, RTL, bottom-up, element-sizing, percent-position, etc.), there is a self-contained HTML page in `test/visual/pages/` and a Playwright spec in `test/visual/*.spec.js` that:
+
+1. Loads `dist/masonry.pkgd.min.js` (or the new ESM build, when available).
+2. Initializes Masonry with a known fixture.
+3. Reads back `getBoundingClientRect()` for every item.
+4. Asserts the positions match a hardcoded expected list (the same way the upstream qunit tests do).
+
+These are the **regression suite**. They run on every change and gate every commit. Failures mean the change is wrong, period — no "let's update the expected values to match" without a written justification.
+
+**Why self-contained pages and not the existing `test/index.html`?** Because the upstream test page loads each dependency individually from `bower_components/`, and Bower is deprecated. Our pages load only `dist/masonry.pkgd.min.js` (which bundles everything) so the suite has zero setup beyond `npx playwright install chromium`.
+
+### Layer 2 — Visual snapshots (`test/visual/__screenshots__/`)
+
+For each fixture page, Playwright takes a screenshot at a fixed viewport size and compares against a checked-in baseline. Threshold: small (≤0.1% pixel diff) — Masonry positions are deterministic, so any visual diff is a real regression.
+
+Snapshots catch things position assertions miss: subpixel rendering bugs, transition glitches, container sizing errors, missing items.
+
+To update snapshots intentionally (e.g., after a deliberate transform-positioning change), run with `--update-snapshots` and *commit the new screenshots in the same commit as the source change*, with the rationale in the commit body. Never update snapshots in a "fix tests" commit.
+
+### Layer 3 — Microbenchmarks (`test/bench/`)
+
+For perf claims, a Playwright script that:
+
+1. Builds a programmatic grid of N items (50, 500, 5000) with controllable item sizes.
+2. Times `new Masonry(...)` initial layout via `performance.now()`.
+3. Calls `.layout()` 100 times in a tight loop, captures average.
+4. Reads Chrome's performance buffer (`performance.getEntriesByType('measure')`) for forced-reflow counts.
+5. Outputs a JSON record per run.
+
+Bench results go to `metrics/bench.tsv` and are diffed against baseline the same way size metrics are. A perf-targeted change that doesn't show up in the bench delta did not work.
+
+### What we deliberately don't test
+
+- **Cross-browser visual parity.** Chromium only. Firefox/Safari rendering differences are out of scope for the regression suite — if a Safari-specific bug is reported, we add a one-off test for it. Trying to maintain three browser baselines is more cost than benefit at this stage.
+- **The original qunit suite (`test/index.html`).** Kept in the repo for reference but not run in CI. Replaced by `test/visual/` which is functionally a superset and doesn't need Bower.
+
+## Workflow expectations
+
+For each work item from the order of operations:
+
+1. Open a feature branch (`feat/L1-delete-matches-polyfill`, `perf/P1b-resize-observer`, etc.) — naming maps to the roadmap section.
+2. Run baseline measurements + tests. Capture the `scripts/measure.sh` output.
+3. Make the change. Stay focused — one roadmap section per branch.
+4. Re-measure, re-test. Iterate until green and the numbers move in the predicted direction.
+5. **Bump `package.json` version** to the next `5.0.0-dev.N`.
+6. **Update `README.md` § "Key improvements vs upstream"** with a one-liner aimed at *library users* (not contributors). What does this change give them? Skip changes that have no user-visible effect (purely internal refactors, doc edits, etc.).
+7. Update `FORK_ROADMAP.md` § Progress to mark the item ✅ with the actual headline delta in the Notes column, and link the per-change file in `improvements/`.
+8. Update `FORK_RELEASE_NOTES.md` with the predicted vs actual numbers.
+9. Write the per-change record at `improvements/NNN-<slug>.md` using `improvements/TEMPLATE.md`.
+10. Commit with a body that includes the before/after metrics inline.
+11. **Create an annotated git tag** `v5.0.0-dev.N` on the improvement commit. Tag message: improvement title + headline numbers. Example: `git tag -a v5.0.0-dev.1 -m "001 — foundation cleanup: -97% npm install size, -82% devDeps"`.
+12. Open PR (or merge directly if working solo) with the metric diff in the description.
+
+**No batching multiple roadmap sections in one commit.** Even if § L.1 and § L.2 are both pure deletions, they get separate commits so the size delta of each is attributable. The whole point is being able to look at `git log` later and answer "which change saved the most bytes?"
+
+**Why the tag + version bump per improvement.** Each tag corresponds to a stable rollback point and a release-notes entry. If a future change regresses something, `git checkout v5.0.0-dev.N` lets anyone reproduce the exact state where it was last green. The version bump is what makes the tag a real semver release that can later be published to npm if desired.
+
+## Expectations & guard rails
+
+- **Performance claims require benchmark numbers.** "Should be faster" is not enough — the bench output goes in the commit body.
+- **Size claims require minifier output.** Predictions about gzipped savings are verified against real `dist/masonry.pkgd.min.js` after a real build, not source LOC math.
+- **Behavior claims require a passing test.** Adding a feature without a corresponding fixture page + position assertions is not done.
+- **A failed prediction is documented, not hidden.** If a planned 600-byte deletion saves 0 bytes after minification, the release note says so and the roadmap is updated to remove the misleading claim. Truthful negative results are how we calibrate the next prediction.
+- **Changes that break the visual snapshot suite are blocked from landing** until either (a) the regression is fixed or (b) the snapshot is updated *with a written rationale*. There is no "tests are flaky, retry" path — Masonry is deterministic.
+
+---
+
+# Progress
+
+Status of every step in the order of operations. Each row links to the per-change record in [`improvements/`](./improvements/) once it lands.
+
+Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial · ❌ reverted · ⏸️ blocked
+
+| # | Step | Section | Status | Improvement | Notes |
+|---|---|---|---|---|---|
+| F0 | Capture baseline metrics | — | ✅ | [000-baseline.md](./improvements/000-baseline.md) | `min.js`: 24,103 B raw / 7,367 B gz / 6,601 B br |
+| F1 | Document fork direction (README, CLAUDE, ROADMAP, RELEASE_NOTES, improvements/) | — | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | |
+| F2 | Add `scripts/measure.sh` + `metrics/history.tsv` | § Methodology | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | hermetic byte counts |
+| 1 | Modern test runner + CI | § 3.2 | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | custom Playwright runner; 4 fixtures passing |
+| 2 | esbuild build | § 2.1 | ⬜ | | replaces broken gulp 3 toolchain |
+| 3 | Delete `bower.json` + `composer.json` | § 2.6 | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | + dead gulp/jshint/qunit toolchain |
+| 3b | Rename package to `masonry-pretext`, bump to 5.0.0-dev | § 2.6 (extension) | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | **−97% `npm install` (349 → 10 pkgs)** |
+| 4a | Delete `matchesSelector` polyfill | § L.1 | ⬜ | | Element.matches universal since 2014 |
+| 4b | Delete vendor-prefix detection | § L.2 | ⬜ | | closes desandro/masonry#1194, #1121 (SSR) |
+| 4c | Delete getSize box-sizing setup | § L.3 | ⬜ | | IE11 / Firefox <29 quirk, dead in 2026 |
+| 4d | Delete setTimeout(0) docReady wrapper | § L.6 | ⬜ | | flickity-specific workaround |
+| 5a | ResizeObserver: container resize | § P.1a | ⬜ | | replaces window resize + 100ms debounce |
+| 5b | ResizeObserver: per-item auto-relayout | § P.1b | ⬜ | | **closes 8+ image-overlap issues** |
+| 5c | ResizeObserver: drop getSize() in needsResizeLayout | § P.1c | ⬜ | | |
+| 6 | Batch read/write layout pass | § 1.2 | ⬜ | | biggest perf win without API change |
+| 7 | Pretext integration (opt-in callback) | § 1.1 | ⬜ | | headline fork feature |
+| 8a | `document.fonts.ready` first-paint gate | § P.4 | ⬜ | | closes desandro/masonry#1182 |
+| 8b | MutationObserver auto-layout (opt-in) | § P.2 | ⬜ | | kills the "forgot to call reload" footgun |
+| 9 | Position via `transform: translate3d` | § 1.3 | ⬜ | | compositor-only, no layout invalidation |
+| 10a | WAAPI replaces transition state machine | § P.5 | ⬜ | | deletes ~120 LOC of Outlayer/Item |
+| 10b | EventTarget replaces EvEmitter | § P.3 | ⬜ | | deletes EvEmitter dep entirely |
+| 10c | AbortController for cleanup | § P.8 | ⬜ | | one-call destroy |
+| 11 | Fix percentage width + gutter math | § P.1 (math) | ⬜ | | **closes desandro/masonry#1006 (53 reactions)** |
+| 12 | Vendor slimmed Outlayer core | § 2.4 | ⬜ | | last, biggest scope, bundle target ~6 KB min |
+| — | IntersectionObserver virtualization | § P.7 | ⬜ | | post-v5, opt-in for 1000+ item grids |
+
+**v5.0.0 ships at the end of step 11.** Step 12 + § P.7 are v5.1+.
+
+When updating this table after a change lands: switch the status column, link the improvement file, and add the headline number to the Notes column (e.g. "−1,234 B min.js gz").

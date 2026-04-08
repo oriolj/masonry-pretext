@@ -1,0 +1,4 @@
+timestamp	label	commit	pkg_name	pkg_version	files	loc	deps	dev_deps	src_raw	src_gz	src_br	pkgd_raw	pkgd_gz	pkgd_br	min_raw	min_gz	min_br
+2026-04-08T10:00:59Z	baseline-v4.2.2	d2b80d1	masonry-layout	4.2.2	42	5678	2	14	7473	2455	2108	63316	15752	13742	24103	7367	6601
+2026-04-08T10:20:14Z	post-001-foundation-cleanup	d2b80d1	masonry-pretext	5.0.0-dev.0	42	5732	2	3	7473	2455	2108	63316	15752	13742	24103	7367	6601
+2026-04-08T10:21:08Z	post-001-foundation-cleanup	d2b80d1	masonry-pretext	5.0.0-dev.0	56	6470	2	3	7473	2455	2108	63316	15752	13742	24103	7367	6601

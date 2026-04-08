@@ -2,3 +2,13 @@ components/
 bower_components/
 node_modules/
 sandbox/**/bundle.js
+
+# visual test runner artifacts (only baselines are checked in)
+test/visual/__screenshots__/*.actual.png
+test/visual/__screenshots__/*.diff.png
+
+# playwright test runner default output dirs (we use a custom runner,
+# but ignore these in case the upstream runner gets re-enabled later)
+test-results/
+playwright-report/
+playwright/.cache/
