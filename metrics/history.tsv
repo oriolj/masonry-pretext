@@ -48,3 +48,4 @@ timestamp	label	commit	pkg_name	pkg_version	files	loc	deps	dev_deps	src_raw	src_
 2026-04-08T18:29:17Z	post-026-weakmap-registry	a9d9ca3	masonry-pretext	5.0.0-dev.26	112	20515	2	4	29305	9241	7985	57043	10716	9551	24731	8001	7261
 2026-04-08T18:33:09Z	post-027-getsize-shim	9a4a216	masonry-pretext	5.0.0-dev.27	113	20329	1	4	29305	9241	7985	54495	10295	9191	23967	7733	7017
 2026-04-08T18:36:30Z	post-028-delete-hide-reveal	a9d4926	masonry-pretext	5.0.0-dev.28	114	20358	1	4	29305	9241	7985	51462	9911	8857	22500	7445	6745
+2026-04-08T18:40:20Z	post-029-delete-create-htmlinit	da173ed	masonry-pretext	5.0.0-dev.29	115	20433	1	4	30038	9429	8157	50039	9544	8541	21985	7211	6562

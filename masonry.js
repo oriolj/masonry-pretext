@@ -36,8 +36,21 @@
 
 // -------------------------- masonryDefinition -------------------------- //
 
-  // create an Outlayer layout class
-  var Masonry = Outlayer.create('masonry');
+  // Inline Outlayer subclass (#029 / item E). Replaces
+  // `var Masonry = Outlayer.create('masonry')` so the deleted-from-Outlayer
+  // `Outlayer.create` factory + `htmlInit` + `subclass` helper aren't needed.
+  function Masonry( element, options ) { Outlayer.call( this, element, options ); }
+  Masonry.prototype = Object.create( Outlayer.prototype );
+  Masonry.prototype.constructor = Masonry;
+  Masonry.namespace = 'masonry';
+  Masonry.defaults = Object.assign( {}, Outlayer.defaults );
+  Masonry.compatOptions = Object.assign( {}, Outlayer.compatOptions );
+  Masonry.data = Outlayer.data;
+  function MasonryItem() { Outlayer.Item.apply( this, arguments ); }
+  MasonryItem.prototype = Object.create( Outlayer.Item.prototype );
+  MasonryItem.prototype.constructor = MasonryItem;
+  Masonry.Item = MasonryItem;
+
   // isFitWidth -> fitWidth
   Masonry.compatOptions.fitWidth = 'isFitWidth';
 

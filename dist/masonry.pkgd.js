@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.28
+ * Masonry PACKAGED v5.0.0-dev.29
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -245,35 +245,6 @@ var Masonry = (() => {
           } else {
             document.addEventListener("DOMContentLoaded", callback);
           }
-        };
-        utils.toDashed = function(str) {
-          return str.replace(/(.)([A-Z])/g, function(match, $1, $2) {
-            return $1 + "-" + $2;
-          }).toLowerCase();
-        };
-        var console = window2.console;
-        utils.htmlInit = function(WidgetClass, namespace) {
-          utils.docReady(function() {
-            var dashedNamespace = utils.toDashed(namespace);
-            var dataAttr = "data-" + dashedNamespace;
-            var dataAttrElems = document.querySelectorAll("[" + dataAttr + "]");
-            var jsDashElems = document.querySelectorAll(".js-" + dashedNamespace);
-            var elems = utils.makeArray(dataAttrElems).concat(utils.makeArray(jsDashElems));
-            var dataOptionsAttr = dataAttr + "-options";
-            elems.forEach(function(elem) {
-              var attr = elem.getAttribute(dataAttr) || elem.getAttribute(dataOptionsAttr);
-              var options;
-              try {
-                options = attr && JSON.parse(attr);
-              } catch (error) {
-                if (console) {
-                  console.error("Error parsing " + dataAttr + " on " + elem.className + ": " + error);
-                }
-                return;
-              }
-              new WidgetClass(elem, options);
-            });
-          });
         };
         return utils;
       });
@@ -962,25 +933,6 @@ var Masonry = (() => {
           elem = utils.getQueryElement(elem);
           return elem && instances.get(elem);
         };
-        Outlayer.create = function(namespace, options) {
-          var Layout = subclass(Outlayer);
-          Layout.defaults = utils.extend({}, Outlayer.defaults);
-          utils.extend(Layout.defaults, options);
-          Layout.compatOptions = utils.extend({}, Outlayer.compatOptions);
-          Layout.namespace = namespace;
-          Layout.data = Outlayer.data;
-          Layout.Item = subclass(Item);
-          utils.htmlInit(Layout, namespace);
-          return Layout;
-        };
-        function subclass(Parent) {
-          function SubClass() {
-            Parent.apply(this, arguments);
-          }
-          SubClass.prototype = Object.create(Parent.prototype);
-          SubClass.prototype.constructor = SubClass;
-          return SubClass;
-        }
         Outlayer.Item = Item;
         return Outlayer;
       });
@@ -1019,7 +971,21 @@ var Masonry = (() => {
         }
       })(typeof window !== "undefined" ? window : {}, function factory(Outlayer, getSize) {
         "use strict";
-        var Masonry = Outlayer.create("masonry");
+        function Masonry(element, options) {
+          Outlayer.call(this, element, options);
+        }
+        Masonry.prototype = Object.create(Outlayer.prototype);
+        Masonry.prototype.constructor = Masonry;
+        Masonry.namespace = "masonry";
+        Masonry.defaults = Object.assign({}, Outlayer.defaults);
+        Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions);
+        Masonry.data = Outlayer.data;
+        function MasonryItem() {
+          Outlayer.Item.apply(this, arguments);
+        }
+        MasonryItem.prototype = Object.create(Outlayer.Item.prototype);
+        MasonryItem.prototype.constructor = MasonryItem;
+        Masonry.Item = MasonryItem;
         Masonry.compatOptions.fitWidth = "isFitWidth";
         var proto = Masonry.prototype;
         var PERCENT_RE = /^\s*(\d*\.?\d+)\s*%\s*$/;

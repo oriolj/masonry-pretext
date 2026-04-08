@@ -625,6 +625,53 @@ var instances = new WeakMap();`,
   return elem && instances.get( elem );
 };`,
       },
+      // ── #029 — delete Outlayer.create factory + subclass helper (item E) ─
+      // masonry.js inlines the Outlayer subclass directly (#029 / item E),
+      // so the factory + the subclass helper + the htmlInit auto-init are
+      // dead code. Closes desandro/masonry#1104. Breaking for `data-masonry`
+      // attribute users — they need to switch to imperative `new Masonry(...)`.
+      {
+        description: '[#029] outlayer.js — delete Outlayer.create factory',
+        find: `/**
+ * create a layout class
+ * @param {String} namespace
+ */
+Outlayer.create = function( namespace, options ) {
+  // sub-class Outlayer
+  var Layout = subclass( Outlayer );
+  // apply new options and compatOptions
+  Layout.defaults = utils.extend( {}, Outlayer.defaults );
+  utils.extend( Layout.defaults, options );
+  Layout.compatOptions = utils.extend( {}, Outlayer.compatOptions  );
+
+  Layout.namespace = namespace;
+
+  Layout.data = Outlayer.data;
+
+  // sub-class Item
+  Layout.Item = subclass( Item );
+
+  // -------------------------- declarative -------------------------- //
+
+  utils.htmlInit( Layout, namespace );
+
+  return Layout;
+};
+
+function subclass( Parent ) {
+  function SubClass() {
+    Parent.apply( this, arguments );
+  }
+
+  SubClass.prototype = Object.create( Parent.prototype );
+  SubClass.prototype.constructor = SubClass;
+
+  return SubClass;
+}
+
+`,
+        replace: ``,
+      },
       // ── #028 — delete hide/reveal animation system (item A) ─────────────
       // The fade-in/scale-up animation system from upstream's defaults
       // (`hiddenStyle: { opacity: 0, transform: 'scale(0.001)' }`,
@@ -850,26 +897,69 @@ utils.getParent = function( elem, selector ) {
 `,
         replace: ``,
       },
+      // ── #029 — delete utils.htmlInit + utils.toDashed (item E) ─────────
+      // htmlInit auto-initialized data-masonry attributes via docReady. The
+      // factory that called it (Outlayer.create) is also deleted in #029,
+      // so the only consumer of htmlInit is gone. toDashed is only used by
+      // htmlInit. (Both prior #006 jQuery patches inside htmlInit become
+      // dead code; this single patch deletes the whole function instead.)
+      // utils.docReady remains because it has no other call sites in the
+      // bundle but is exported as part of utils — leaving it lets future
+      // improvements that need DOMContentLoaded reuse it.
       {
-        description: '[#006 no-jquery] fizzy-ui-utils.js htmlInit — delete `var jQuery = window.jQuery;`',
-        find: `    var dataOptionsAttr = dataAttr + '-options';
+        description: '[#029] fizzy-ui-utils.js — delete utils.toDashed + utils.htmlInit',
+        find: `// ----- htmlInit ----- //
+
+// http://jamesroberts.name/blog/2010/02/22/string-functions-for-javascript-trim-to-camel-case-to-dashed-and-to-underscore/
+utils.toDashed = function( str ) {
+  return str.replace( /(.)([A-Z])/g, function( match, $1, $2 ) {
+    return $1 + '-' + $2;
+  }).toLowerCase();
+};
+
+var console = window.console;
+/**
+ * allow user to initialize classes via [data-namespace] or .js-namespace class
+ * htmlInit( Widget, 'widgetName' )
+ * options are parsed from data-namespace-options
+ */
+utils.htmlInit = function( WidgetClass, namespace ) {
+  utils.docReady( function() {
+    var dashedNamespace = utils.toDashed( namespace );
+    var dataAttr = 'data-' + dashedNamespace;
+    var dataAttrElems = document.querySelectorAll( '[' + dataAttr + ']' );
+    var jsDashElems = document.querySelectorAll( '.js-' + dashedNamespace );
+    var elems = utils.makeArray( dataAttrElems )
+      .concat( utils.makeArray( jsDashElems ) );
+    var dataOptionsAttr = dataAttr + '-options';
     var jQuery = window.jQuery;
-`,
-        replace: `    var dataOptionsAttr = dataAttr + '-options';
-`,
-      },
-      {
-        description: '[#006 no-jquery] fizzy-ui-utils.js htmlInit — delete `if (jQuery)` block (the $.data call)',
-        find: `      // initialize
+
+    elems.forEach( function( elem ) {
+      var attr = elem.getAttribute( dataAttr ) ||
+        elem.getAttribute( dataOptionsAttr );
+      var options;
+      try {
+        options = attr && JSON.parse( attr );
+      } catch ( error ) {
+        // log error, do not initialize
+        if ( console ) {
+          console.error( 'Error parsing ' + dataAttr + ' on ' + elem.className +
+          ': ' + error );
+        }
+        return;
+      }
+      // initialize
       var instance = new WidgetClass( elem, options );
       // make available via $().data('namespace')
       if ( jQuery ) {
         jQuery.data( elem, namespace, instance );
       }
-    });`,
-        replace: `      // initialize
-      new WidgetClass( elem, options );
-    });`,
+    });
+
+  });
+};
+`,
+        replace: ``,
       },
     ],
   },
