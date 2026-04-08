@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.4
+ * Masonry PACKAGED v5.0.0-dev.5
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -104,7 +104,7 @@ var Masonry = (() => {
         } else {
           window2.getSize = factory();
         }
-      })(window, function factory() {
+      })(typeof window !== "undefined" ? window : {}, function factory() {
         "use strict";
         function getStyleSize(value) {
           var num = parseFloat(value);
@@ -253,7 +253,7 @@ var Masonry = (() => {
             window2.matchesSelector
           );
         }
-      })(window, function factory(window2, matchesSelector) {
+      })(typeof window !== "undefined" ? window : {}, function factory(window2, matchesSelector) {
         "use strict";
         var utils = {};
         utils.extend = function(a, b) {
@@ -342,6 +342,7 @@ var Masonry = (() => {
           };
         };
         utils.docReady = function(callback) {
+          if (typeof document === "undefined") return;
           var readyState = document.readyState;
           if (readyState == "complete" || readyState == "interactive") {
             setTimeout(callback);
@@ -411,7 +412,7 @@ var Masonry = (() => {
             window2.getSize
           );
         }
-      })(window, function factory(EvEmitter, getSize) {
+      })(typeof window !== "undefined" ? window : {}, function factory(EvEmitter, getSize) {
         "use strict";
         function isEmptyObj(obj) {
           for (var prop in obj) {
@@ -759,7 +760,7 @@ var Masonry = (() => {
             window2.Outlayer.Item
           );
         }
-      })(window, function factory(window2, EvEmitter, getSize, utils, Item) {
+      })(typeof window !== "undefined" ? window : {}, function factory(window2, EvEmitter, getSize, utils, Item) {
         "use strict";
         var console2 = window2.console;
         var jQuery = window2.jQuery;
@@ -1285,7 +1286,7 @@ var Masonry = (() => {
             window2.getSize
           );
         }
-      })(window, function factory(Outlayer, getSize) {
+      })(typeof window !== "undefined" ? window : {}, function factory(Outlayer, getSize) {
         "use strict";
         var Masonry = Outlayer.create("masonry");
         Masonry.compatOptions.fitWidth = "isFitWidth";
@@ -1454,7 +1455,7 @@ var Masonry = (() => {
             window2.jQuery
           );
         }
-      })(window, function factory(window2, jQuery) {
+      })(typeof window !== "undefined" ? window : {}, function factory(window2, jQuery) {
         "use strict";
         var arraySlice = Array.prototype.slice;
         var console2 = window2.console;

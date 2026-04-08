@@ -817,7 +817,7 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | 3b | Rename package to `masonry-pretext`, bump to 5.0.0-dev | § 2.6 (extension) | ✅ `v5.0.0-dev.1` | [001-foundation-cleanup.md](./improvements/001-foundation-cleanup.md) | **−97% `npm install` (349 → 10 pkgs)** |
 | 4a | Delete `matchesSelector` polyfill | § L.1 | ✅ `v5.0.0-dev.3` | [003-delete-matches-selector-polyfill.md](./improvements/003-delete-matches-selector-polyfill.md) | **−401 B raw / −102 B gz** on min.js; first row where raw < upstream |
 | 4b | Delete vendor-prefix detection (size only) | § L.2a | ✅ `v5.0.0-dev.4` | [004-delete-vendor-prefix-detection.md](./improvements/004-delete-vendor-prefix-detection.md) | **−606 B raw / −172 B gz** on min.js; SSR claim disproven, see § L.2b |
-| 4b' | SSR fix — wrap UMD call sites with `typeof window` guards | § L.2b | ⬜ | | the actual SSR fix; gate is `test/visual/ssr-smoke.mjs` |
+| 4b' | SSR fix — wrap UMD call sites with `typeof window` guards | § L.2b | ✅ `v5.0.0-dev.5` | [005-ssr-import-fix.md](./improvements/005-ssr-import-fix.md) | **closes desandro/masonry #1194 / #1121 / #1201**; +13 B gz cost; ssr-smoke now in `make test` |
 | 4c | Delete getSize box-sizing setup | § L.3 | ⬜ | | IE11 / Firefox <29 quirk, dead in 2026 |
 | 4d | Delete setTimeout(0) docReady wrapper | § L.6 | ⬜ | | flickity-specific workaround |
 | 5a | ResizeObserver: container resize | § P.1a | ⬜ | | replaces window resize + 100ms debounce |

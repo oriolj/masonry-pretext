@@ -30,7 +30,7 @@
     );
   }
 
-}( window, function factory( Outlayer, getSize ) {
+}( typeof window !== 'undefined' ? window : {}, function factory( Outlayer, getSize ) {
 
 'use strict';
 

@@ -202,6 +202,19 @@ var dashedVendorProperties = {
   // just remove element if no transition duration
   if ( !parseFloat( this.layout.options.transitionDuration ) ) {`,
   },
+
+  // ── 7. SSR guard for the UMD call site (improvement 005 / § L.2b) ────────
+  // The IIFE invocation passes \`window\` as a free variable, which throws
+  // ReferenceError when the bundle is loaded in a Node \`vm\` context.
+  // Wrap with a typeof guard so SSR-importing the bundle no longer crashes.
+  // The factory body parameter \`window\` then becomes \`{}\` in Node, and the
+  // \`window.console\` / \`window.jQuery\` reads inside become \`undefined\` —
+  // both of which are handled by existing falsy checks.
+  {
+    description: '[SSR] guard outlayer/item.js UMD call site',
+    find: `}( window, function factory( EvEmitter, getSize ) {`,
+    replace: `}( typeof window !== 'undefined' ? window : {}, function factory( EvEmitter, getSize ) {`,
+  },
 ];
 
 const outlayerItemModernPlugin = {
@@ -222,6 +235,108 @@ const outlayerItemModernPlugin = {
       }
       return { contents: src, loader: 'js' };
     });
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SSR DOM guard plugin (improvement 005 / roadmap § L.2b)
+//
+// Two classes of patch make the bundled file safe to load in a Node SSR
+// context (Next.js, Nuxt, SvelteKit, etc.):
+//
+//   1. **UMD wrapper guards.** Each dependency's UMD wrapper invokes its
+//      factory with a bare \`window\` reference, which throws ReferenceError
+//      in Node. Wrap with \`typeof window !== 'undefined' ? window : {}\` so
+//      Node gets an empty object instead.
+//
+//   2. **utils.docReady guard.** masonry.js's factory body calls
+//      \`Outlayer.create('masonry')\` at module load. \`Outlayer.create\`
+//      transitively calls \`utils.htmlInit\` → \`utils.docReady\` →
+//      \`document.readyState\`, which throws when document is undefined. Add
+//      a \`typeof document === 'undefined'\` short-circuit to docReady.
+//
+// outlayer/item.js's UMD guard goes through the existing
+// \`outlayerItemPatchPlugin\` (transform #7) — esbuild only allows one
+// onLoad per file pattern, so the two plugins must not overlap.
+//
+// ev-emitter is already SSR-safe (its source uses \`typeof window !=
+// 'undefined' ? window : this\`) and doesn't need patching.
+//
+// masonry.js is OUR source file and is patched directly (not via this
+// plugin) — see the matching edit on line ~33 of masonry.js.
+//
+// Verified by test/visual/ssr-smoke.mjs which loads the bundle in a Node
+// vm context with empty globals.
+// ─────────────────────────────────────────────────────────────────────────────
+const SSR_FILE_PATCHES = [
+  {
+    file: /node_modules[\\/]outlayer[\\/]outlayer\.js$/,
+    transforms: [
+      {
+        description: 'outlayer/outlayer.js UMD call site',
+        find: `}( window, function factory( window, EvEmitter, getSize, utils, Item ) {`,
+        replace: `}( typeof window !== 'undefined' ? window : {}, function factory( window, EvEmitter, getSize, utils, Item ) {`,
+      },
+    ],
+  },
+  {
+    file: /node_modules[\\/]jquery-bridget[\\/]jquery-bridget\.js$/,
+    transforms: [
+      {
+        description: 'jquery-bridget/jquery-bridget.js UMD call site',
+        find: `}( window, function factory( window, jQuery ) {`,
+        replace: `}( typeof window !== 'undefined' ? window : {}, function factory( window, jQuery ) {`,
+      },
+    ],
+  },
+  {
+    file: /node_modules[\\/]get-size[\\/]get-size\.js$/,
+    transforms: [
+      {
+        description: 'get-size/get-size.js UMD call site',
+        find: `})( window, function factory() {`,
+        replace: `})( typeof window !== 'undefined' ? window : {}, function factory() {`,
+      },
+    ],
+  },
+  {
+    file: /node_modules[\\/]fizzy-ui-utils[\\/]utils\.js$/,
+    transforms: [
+      {
+        description: 'fizzy-ui-utils/utils.js UMD call site',
+        find: `}( window, function factory( window, matchesSelector ) {`,
+        replace: `}( typeof window !== 'undefined' ? window : {}, function factory( window, matchesSelector ) {`,
+      },
+      {
+        description: 'fizzy-ui-utils/utils.js docReady — guard against undefined document',
+        find: `utils.docReady = function( callback ) {
+  var readyState = document.readyState;`,
+        replace: `utils.docReady = function( callback ) {
+  if ( typeof document === 'undefined' ) return;
+  var readyState = document.readyState;`,
+      },
+    ],
+  },
+];
+
+const ssrDomGuardPlugin = {
+  name: 'ssr-dom-guard',
+  setup(build) {
+    for (const { file, transforms } of SSR_FILE_PATCHES) {
+      build.onLoad({ filter: file }, async (args) => {
+        let src = await readFile(args.path, 'utf8');
+        for (const { description, find, replace } of transforms) {
+          const before = src;
+          src = src.replace(find, replace);
+          if (src === before) {
+            throw new Error(
+              `ssr-dom-guard: pattern not found for "${description}" in ${args.path}.`,
+            );
+          }
+        }
+        return { contents: src, loader: 'js' };
+      });
+    }
   },
 };
 
@@ -272,7 +387,7 @@ const sharedConfig = {
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
-  plugins: [jqueryStubPlugin, matchesSelectorShimPlugin, outlayerItemModernPlugin],
+  plugins: [jqueryStubPlugin, matchesSelectorShimPlugin, outlayerItemModernPlugin, ssrDomGuardPlugin],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

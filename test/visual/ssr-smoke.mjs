@@ -48,9 +48,11 @@ try {
 } catch (err) {
   console.error(`✗ ${path.basename(target)} crashes in DOM-less context`);
   console.error(`  ${err.message}`);
-  // Print the first stack frame inside the bundle so we can see *which*
-  // DOM access tripped it.
-  const stackLine = (err.stack || '').split('\n').find(line => line.includes(path.basename(target)));
-  if (stackLine) console.error(' ', stackLine.trim());
+  // Print the full stack so we can see *which* DOM access tripped it.
+  if (err.stack) {
+    for (const line of err.stack.split('\n').slice(0, 8)) {
+      console.error('   ' + line);
+    }
+  }
   process.exit(1);
 }

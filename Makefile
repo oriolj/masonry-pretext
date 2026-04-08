@@ -41,9 +41,13 @@ build:
 
 test: build
 	@node test/visual/run.mjs
+	@echo
+	@node test/visual/ssr-smoke.mjs
 
 test-update: build
 	@node test/visual/run.mjs --update
+	@echo
+	@node test/visual/ssr-smoke.mjs
 
 measure:
 	@./scripts/measure.sh

@@ -17,6 +17,57 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.5 — 2026-04-08 — SSR import fix (§ L.2b)
+
+> Tag: `v5.0.0-dev.5` · Improvement: [`005-ssr-import-fix.md`](./improvements/005-ssr-import-fix.md) · **Closes upstream**: [`desandro/masonry#1194`](https://github.com/desandro/masonry/issues/1194), [`#1121`](https://github.com/desandro/masonry/issues/1121), [`#1201`](https://github.com/desandro/masonry/issues/1201)
+
+`import Masonry from 'masonry-pretext'` no longer crashes during Next.js / Nuxt / SvelteKit / Vite SSR build passes. The fix wraps every UMD wrapper's `window` reference with `typeof window !== 'undefined' ? window : {}` so the bundle can be loaded in a Node `vm` context with empty globals. Behavior in the browser is identical — the guard always evaluates to the real `window`, so the visual regression suite is unchanged.
+
+This is the actual fix for the SSR claim that improvement `004` proved was *not* automatic. The new `test/visual/ssr-smoke.mjs` test (added in `004` as a diagnostic; never passed until now) is the verification: it loads `dist/masonry.pkgd.min.js` in a Node `vm` context with empty globals and asserts the IIFE doesn't throw.
+
+### Added
+
+- **`test/visual/ssr-smoke.mjs` is now in `make test`** as a permanent gate. Future improvements that touch module-load DOM access will be blocked at the gate if they introduce a regression.
+- **`npm run test:ssr`** script for running the SSR smoke test in isolation.
+
+### Changed
+
+- **`masonry.js` source (line 33):** UMD invocation now passes `typeof window !== 'undefined' ? window : {}` instead of bare `window`. This is the **first source edit** in the fork — every previous improvement went through a build-time plugin. Both `dist/` consumers and direct `require('masonry-pretext')` users get the fix.
+- **Build-time patches** (via `scripts/build.mjs` plugins) wrap the UMD call sites in `outlayer/outlayer.js`, `outlayer/item.js`, `get-size/get-size.js`, `fizzy-ui-utils/utils.js`, and `jquery-bridget/jquery-bridget.js`.
+- **`fizzy-ui-utils/utils.js` `docReady`** gets a `typeof document === 'undefined' ? return` short-circuit. `Outlayer.create('masonry')` runs at module load and transitively reaches `docReady` via `htmlInit` — the guard prevents the chain from crashing in Node.
+
+### Numbers
+
+| File | Metric | pre-005 | v5.0.0-dev.5 | Δ |
+|---|---|---:|---:|---:|
+| `masonry.js` source | raw | 7,473 | 7,510 | **+37 B** |
+| `dist/masonry.pkgd.min.js` | raw | 23,296 | 23,450 | **+154 B (+0.66 %)** |
+| `dist/masonry.pkgd.min.js` | gzip | 7,616 | **7,629** | **+13 B (+0.17 %)** |
+| `dist/masonry.pkgd.min.js` | brotli | 6,851 | 6,898 | +47 B |
+| Visual regression tests | passing | 4 / 4 | **4 / 4** | unchanged |
+| **SSR smoke test** | passing | **✗** | **✓** | **first pass** |
+
+### vs upstream-frozen v4.2.2
+
+| Metric | v4.2.2 | v5.0.0-dev.5 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,103 | **23,450** | **−653 B (−2.71 %)** |
+| `dist/masonry.pkgd.min.js` gzip | 7,367 | 7,629 | +262 B (+13 vs #004 — that's the entire SSR cost) |
+| **SSR import works** | ✗ | **✓** | **first time** |
+
+The +13 B gzipped cost for the SSR fix is **essentially free** — three upstream issues (open for 1–2 years with no movement) close in exchange for less than a gzipped sentence's worth of bytes.
+
+### Predicted vs actual
+
+All six predictions matched within their stated bands. **One under-prediction**: I planned the fix as a single round of patches; the actual investigation needed three iterations of `ssr-smoke.mjs` (forgot `jquery-bridget`'s UMD wrapper, then forgot `fizzy-ui-utils.docReady`'s direct `document.readyState` access). Each missing patch was surfaced in <30 seconds by the test, fixed in another minute, and verified by the next `make test` run. **The methodology converged to a working SSR fix in three iterations** because the gate was already in place.
+
+### Migration notes
+
+- **Browser consumers:** zero behavioral change. The guard always evaluates to the real `window` in any browser context. CDN consumers should regenerate SRI hashes (bundle bytes have changed).
+- **SSR consumers:** `import Masonry from 'masonry-pretext'` now works. You still can't `new Masonry(...)` in a Node SSR context — Masonry needs a real DOM at instantiation time — but you can put the `new Masonry` call inside a `useEffect` / `onMount` / client-only block as you would for any client-side library, and the import won't crash the build.
+
+---
+
 ## v5.0.0-dev.4 — 2026-04-08 — Delete vendor-prefix detection (§ L.2a)
 
 > Tag: `v5.0.0-dev.4` · Improvement: [`004-delete-vendor-prefix-detection.md`](./improvements/004-delete-vendor-prefix-detection.md) · Closes upstream: _none — see "SSR claim" below_
