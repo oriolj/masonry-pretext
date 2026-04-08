@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.26
+ * Masonry PACKAGED v5.0.0-dev.27
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -88,116 +88,45 @@ var Masonry = (() => {
     }
   });
 
-  // node_modules/get-size/get-size.js
-  var require_get_size = __commonJS({
-    "node_modules/get-size/get-size.js"(exports, module) {
-      /*!
-       * getSize v2.0.3
-       * measure size of elements
-       * MIT license
-       */
-      (function(window2, factory) {
-        if (typeof define == "function" && define.amd) {
-          define(factory);
-        } else if (typeof module == "object" && module.exports) {
-          module.exports = factory();
-        } else {
-          window2.getSize = factory();
-        }
-      })(typeof window !== "undefined" ? window : {}, function factory() {
-        "use strict";
-        function getStyleSize(value) {
-          var num = parseFloat(value);
-          var isValid = value.indexOf("%") == -1 && !isNaN(num);
-          return isValid && num;
-        }
-        function noop() {
-        }
-        var logError = typeof console == "undefined" ? noop : function(message) {
-          console.error(message);
-        };
-        var measurements = [
-          "paddingLeft",
-          "paddingRight",
-          "paddingTop",
-          "paddingBottom",
-          "marginLeft",
-          "marginRight",
-          "marginTop",
-          "marginBottom",
-          "borderLeftWidth",
-          "borderRightWidth",
-          "borderTopWidth",
-          "borderBottomWidth"
-        ];
-        var measurementsLength = measurements.length;
-        function getZeroSize() {
-          var size = {
-            width: 0,
-            height: 0,
-            innerWidth: 0,
-            innerHeight: 0,
-            outerWidth: 0,
-            outerHeight: 0
-          };
-          for (var i = 0; i < measurementsLength; i++) {
-            var measurement = measurements[i];
-            size[measurement] = 0;
-          }
+  // get-size-shim:get-size-shim
+  var require_get_size_shim = __commonJS({
+    "get-size-shim:get-size-shim"(exports, module) {
+      "use strict";
+      var GS_PROPS = [
+        "paddingLeft",
+        "paddingRight",
+        "paddingTop",
+        "paddingBottom",
+        "marginLeft",
+        "marginRight",
+        "marginTop",
+        "marginBottom",
+        "borderLeftWidth",
+        "borderRightWidth",
+        "borderTopWidth",
+        "borderBottomWidth"
+      ];
+      function getSize(elem) {
+        if (typeof elem == "string") elem = document.querySelector(elem);
+        if (!elem || typeof elem != "object" || !elem.nodeType) return;
+        var style = getComputedStyle(elem);
+        var size, i;
+        if (style.display == "none") {
+          size = { width: 0, height: 0, innerWidth: 0, innerHeight: 0, outerWidth: 0, outerHeight: 0 };
+          for (i = 0; i < 12; i++) size[GS_PROPS[i]] = 0;
           return size;
         }
-        function getStyle(elem) {
-          var style = getComputedStyle(elem);
-          if (!style) {
-            logError("Style returned " + style + ". Are you running this code in a hidden iframe on Firefox? See https://bit.ly/getsizebug1");
-          }
-          return style;
+        size = { width: elem.offsetWidth, height: elem.offsetHeight };
+        for (i = 0; i < 12; i++) {
+          size[GS_PROPS[i]] = parseFloat(style[GS_PROPS[i]]) || 0;
         }
-        function getSize(elem) {
-          if (typeof elem == "string") {
-            elem = document.querySelector(elem);
-          }
-          if (!elem || typeof elem != "object" || !elem.nodeType) {
-            return;
-          }
-          var style = getStyle(elem);
-          if (style.display == "none") {
-            return getZeroSize();
-          }
-          var size = {};
-          size.width = elem.offsetWidth;
-          size.height = elem.offsetHeight;
-          var isBorderBox = size.isBorderBox = style.boxSizing == "border-box";
-          for (var i = 0; i < measurementsLength; i++) {
-            var measurement = measurements[i];
-            var value = style[measurement];
-            var num = parseFloat(value);
-            size[measurement] = !isNaN(num) ? num : 0;
-          }
-          var paddingWidth = size.paddingLeft + size.paddingRight;
-          var paddingHeight = size.paddingTop + size.paddingBottom;
-          var marginWidth = size.marginLeft + size.marginRight;
-          var marginHeight = size.marginTop + size.marginBottom;
-          var borderWidth = size.borderLeftWidth + size.borderRightWidth;
-          var borderHeight = size.borderTopWidth + size.borderBottomWidth;
-          var styleWidth = getStyleSize(style.width);
-          if (styleWidth !== false) {
-            size.width = styleWidth + // add padding and border unless it's already including it
-            (isBorderBox ? 0 : paddingWidth + borderWidth);
-          }
-          var styleHeight = getStyleSize(style.height);
-          if (styleHeight !== false) {
-            size.height = styleHeight + // add padding and border unless it's already including it
-            (isBorderBox ? 0 : paddingHeight + borderHeight);
-          }
-          size.innerWidth = size.width - (paddingWidth + borderWidth);
-          size.innerHeight = size.height - (paddingHeight + borderHeight);
-          size.outerWidth = size.width + marginWidth;
-          size.outerHeight = size.height + marginHeight;
-          return size;
-        }
-        return getSize;
-      });
+        size.innerWidth = size.width - size.paddingLeft - size.paddingRight - size.borderLeftWidth - size.borderRightWidth;
+        size.innerHeight = size.height - size.paddingTop - size.paddingBottom - size.borderTopWidth - size.borderBottomWidth;
+        size.outerWidth = size.width + size.marginLeft + size.marginRight;
+        size.outerHeight = size.height + size.marginTop + size.marginBottom;
+        return size;
+      }
+      module.exports = getSize;
     }
   });
 
@@ -322,7 +251,7 @@ var Masonry = (() => {
             return $1 + "-" + $2;
           }).toLowerCase();
         };
-        var console2 = window2.console;
+        var console = window2.console;
         utils.htmlInit = function(WidgetClass, namespace) {
           utils.docReady(function() {
             var dashedNamespace = utils.toDashed(namespace);
@@ -337,8 +266,8 @@ var Masonry = (() => {
               try {
                 options = attr && JSON.parse(attr);
               } catch (error) {
-                if (console2) {
-                  console2.error("Error parsing " + dataAttr + " on " + elem.className + ": " + error);
+                if (console) {
+                  console.error("Error parsing " + dataAttr + " on " + elem.className + ": " + error);
                 }
                 return;
               }
@@ -366,7 +295,7 @@ var Masonry = (() => {
         } else if (typeof module == "object" && module.exports) {
           module.exports = factory(
             require_ev_emitter(),
-            require_get_size()
+            require_get_size_shim()
           );
         } else {
           window2.Outlayer = {};
@@ -705,7 +634,7 @@ var Masonry = (() => {
           module.exports = factory(
             window2,
             require_ev_emitter(),
-            require_get_size(),
+            require_get_size_shim(),
             require_utils(),
             require_item()
           );
@@ -720,15 +649,15 @@ var Masonry = (() => {
         }
       })(typeof window !== "undefined" ? window : {}, function factory(window2, EvEmitter, getSize, utils, Item) {
         "use strict";
-        var console2 = window2.console;
+        var console = window2.console;
         var noop = function() {
         };
         var instances = /* @__PURE__ */ new WeakMap();
         function Outlayer(element, options) {
           var queryElement = utils.getQueryElement(element);
           if (!queryElement) {
-            if (console2) {
-              console2.error("Bad element for " + this.constructor.namespace + ": " + (queryElement || element));
+            if (console) {
+              console.error("Bad element for " + this.constructor.namespace + ": " + (queryElement || element));
             }
             return;
           }
@@ -1172,7 +1101,7 @@ var Masonry = (() => {
         } else if (typeof module == "object" && module.exports) {
           module.exports = factory(
             require_outlayer(),
-            require_get_size()
+            require_get_size_shim()
           );
         } else {
           window2.Masonry = factory(

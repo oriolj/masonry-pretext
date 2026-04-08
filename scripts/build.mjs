@@ -558,114 +558,14 @@ function getMilliseconds( time ) {
       },
     ],
   },
-  {
-    file: /node_modules[\\/]get-size[\\/]get-size\.js$/,
-    transforms: [
-      {
-        description: '[#005 SSR] get-size/get-size.js UMD call site',
-        find: `})( window, function factory() {`,
-        replace: `})( typeof window !== 'undefined' ? window : {}, function factory() {`,
-      },
-      // ── #007 — delete the IE11/Firefox<29 box-sizing detection ────────────
-      // get-size's setup() probe-div trick existed to detect a quirk where
-      // IE11 / Firefox<29 returned `style.width` as inner-width on border-box
-      // elements. At our browser baseline (chrome84/firefox86/safari15/edge84)
-      // the outer-width behavior is universal, so isBoxSizeOuter is always
-      // true and the setup machinery is dead. See improvements/007-*.md.
-      {
-        description: '[#007] delete get-size setup() function + isSetup/isBoxSizeOuter state',
-        find: `// -------------------------- setup -------------------------- //
-
-var isSetup = false;
-
-var isBoxSizeOuter;
-
-/**
- * setup
- * check isBoxSizerOuter
- * do on first getSize() rather than on page load for Firefox bug
- */
-function setup() {
-  // setup once
-  if ( isSetup ) {
-    return;
-  }
-  isSetup = true;
-
-  // -------------------------- box sizing -------------------------- //
-
-  /**
-   * Chrome & Safari measure the outer-width on style.width on border-box elems
-   * IE11 & Firefox<29 measures the inner-width
-   */
-  var div = document.createElement('div');
-  div.style.width = '200px';
-  div.style.padding = '1px 2px 3px 4px';
-  div.style.borderStyle = 'solid';
-  div.style.borderWidth = '1px 2px 3px 4px';
-  div.style.boxSizing = 'border-box';
-
-  var body = document.body || document.documentElement;
-  body.appendChild( div );
-  var style = getStyle( div );
-  // round value for browser zoom. desandro/masonry#928
-  isBoxSizeOuter = Math.round( getStyleSize( style.width ) ) == 200;
-  getSize.isBoxSizeOuter = isBoxSizeOuter;
-
-  body.removeChild( div );
-}
-
-`,
-        replace: `// box-sizing setup() deleted by masonry-pretext #007 (\u00a7 L.3)
-// IE11 / Firefox<29 quirk; modern browsers always return outer width on
-// style.width for border-box elements.
-
-`,
-      },
-      {
-        description: '[#007] delete `setup();` call from inside getSize()',
-        find: `function getSize( elem ) {
-  setup();
-
-  // use querySeletor if elem is string`,
-        replace: `function getSize( elem ) {
-  // use querySeletor if elem is string`,
-      },
-      {
-        description: '[#007] inline isBorderBoxSizeOuter (always equals isBorderBox at our browser baseline)',
-        find: `  var isBorderBoxSizeOuter = isBorderBox && isBoxSizeOuter;
-
-  // overwrite width and height if we can get it from style
-  var styleWidth = getStyleSize( style.width );
-  if ( styleWidth !== false ) {
-    size.width = styleWidth +
-      // add padding and border unless it's already including it
-      ( isBorderBoxSizeOuter ? 0 : paddingWidth + borderWidth );
-  }
-
-  var styleHeight = getStyleSize( style.height );
-  if ( styleHeight !== false ) {
-    size.height = styleHeight +
-      // add padding and border unless it's already including it
-      ( isBorderBoxSizeOuter ? 0 : paddingHeight + borderHeight );
-  }`,
-        replace: `  // overwrite width and height if we can get it from style
-  var styleWidth = getStyleSize( style.width );
-  if ( styleWidth !== false ) {
-    size.width = styleWidth +
-      // add padding and border unless it's already including it
-      ( isBorderBox ? 0 : paddingWidth + borderWidth );
-  }
-
-  var styleHeight = getStyleSize( style.height );
-  if ( styleHeight !== false ) {
-    size.height = styleHeight +
-      // add padding and border unless it's already including it
-      ( isBorderBox ? 0 : paddingHeight + borderHeight );
-  }`,
-      },
-    ],
-  },
+  // ── #027 / item O — get-size DEP_FILE_PATCHES are now obsolete ───────
+  // The `getSizeShimPlugin` (registered in baseConfig.plugins) intercepts
+  // the `get-size` resolution and replaces the entire ~200 LOC package with
+  // a ~25 LOC inlined implementation. The transforms previously here for
+  // #005 (SSR call site) and #007 (box-sizing setup deletion) no longer
+  // apply because `node_modules/get-size/get-size.js` is never loaded.
+  // Block intentionally left empty for the audit trail; remove the entry
+  // from DEP_FILE_PATCHES if a future improvement deletes this file.
   {
     file: /node_modules[\\/]fizzy-ui-utils[\\/]utils\.js$/,
     transforms: [
@@ -814,6 +714,76 @@ const matchesSelectorShimPlugin = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// `get-size` shim plugin (improvement #027 / item O)
+//
+// Replace the bundled `desandro/get-size` package with a much smaller
+// inlined implementation. The original is ~200 LOC and includes:
+//   - a setup() probe to detect IE11/Firefox-<29 box-sizing quirks (#007
+//     already deleted that)
+//   - a `getStyleSize()` helper that explicitly rejects percent strings
+//   - a 14-property box-model extraction loop
+//   - a getZeroSize() builder for hidden elements
+//   - getStyle() with a Firefox bug workaround
+//
+// At our browser baseline (chrome 84+ / firefox 86+ / safari 15+ / edge 84+):
+//   - `offsetWidth/offsetHeight` return the visual box dimensions (including
+//     padding + border, regardless of box-sizing). NO probe needed.
+//   - `getComputedStyle` returns resolved px values for all numeric props.
+//
+// The shim returns the same object shape masonry/outlayer consumes
+// (`width/height/innerWidth/innerHeight/outerWidth/outerHeight` plus the
+// 12 padding/margin/border properties used by `_getBoundingRect` and
+// `_setContainerMeasure`). String selectors are still resolved via
+// `document.querySelector` for backward compat with `_getMeasurement`.
+//
+// Drops one runtime dependency (`get-size`) — masonry-pretext now has
+// a single runtime dep (`outlayer`).
+// ─────────────────────────────────────────────────────────────────────────────
+const getSizeShimContents = `
+'use strict';
+var GS_PROPS = ['paddingLeft','paddingRight','paddingTop','paddingBottom',
+  'marginLeft','marginRight','marginTop','marginBottom',
+  'borderLeftWidth','borderRightWidth','borderTopWidth','borderBottomWidth'];
+
+function getSize( elem ) {
+  if ( typeof elem == 'string' ) elem = document.querySelector( elem );
+  if ( !elem || typeof elem != 'object' || !elem.nodeType ) return;
+  var style = getComputedStyle( elem );
+  var size, i;
+  if ( style.display == 'none' ) {
+    size = { width: 0, height: 0, innerWidth: 0, innerHeight: 0, outerWidth: 0, outerHeight: 0 };
+    for ( i = 0; i < 12; i++ ) size[ GS_PROPS[i] ] = 0;
+    return size;
+  }
+  size = { width: elem.offsetWidth, height: elem.offsetHeight };
+  for ( i = 0; i < 12; i++ ) {
+    size[ GS_PROPS[i] ] = parseFloat( style[ GS_PROPS[i] ] ) || 0;
+  }
+  size.innerWidth = size.width - size.paddingLeft - size.paddingRight - size.borderLeftWidth - size.borderRightWidth;
+  size.innerHeight = size.height - size.paddingTop - size.paddingBottom - size.borderTopWidth - size.borderBottomWidth;
+  size.outerWidth = size.width + size.marginLeft + size.marginRight;
+  size.outerHeight = size.height + size.marginTop + size.marginBottom;
+  return size;
+}
+
+module.exports = getSize;
+`;
+
+const getSizeShimPlugin = {
+  name: 'get-size-shim',
+  setup(build) {
+    build.onResolve({ filter: /^get-size$/ }, () => ({
+      path: 'get-size-shim',
+      namespace: 'get-size-shim',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'get-size-shim' }, () => ({
+      contents: getSizeShimContents,
+      loader: 'js',
+    }));
+  },
+};
+
 // Base config shared by every output format. Format-specific bits
 // (`format`, `globalName`, `stdin`, `outfile`, `minify`) are layered on top.
 const baseConfig = {
@@ -826,7 +796,7 @@ const baseConfig = {
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
-  plugins: [matchesSelectorShimPlugin, depFilePatchesPlugin],
+  plugins: [matchesSelectorShimPlugin, getSizeShimPlugin, depFilePatchesPlugin],
 };
 
 const iifeSharedConfig = {
