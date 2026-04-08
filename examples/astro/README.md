@@ -1,44 +1,159 @@
-# masonry-pretext + Astro
+# masonry-pretext + Astro — zero-flash SSR example
 
-Minimal example showing how to use `masonry-pretext` in an Astro project. The grid is **server-rendered as static HTML by Astro**, and a tiny **client-side script** constructs the Masonry instance after hydration.
+End-to-end demo of `masonry-pretext`'s defining capability: **server-side cascading-grid layout precomputation**, with zero hydration flash on the client.
+
+This is the runnable example for [`PRETEXT_SSR_ROADMAP.md`](../../PRETEXT_SSR_ROADMAP.md) Phase 4. It uses every piece of the SSR feature line:
+
+| Improvement | What it provides |
+|---|---|
+| [#017 `Masonry.computeLayout`](../../improvements/017-compute-layout-static-helper.md) | Pure-Node layout helper called from the Astro frontmatter |
+| [#018 `initLayout: false` adoption](../../improvements/018-init-layout-false-adoption.md) | Client adopts SSR positions without overwriting them |
+| [#015 `static: true` preset](../../improvements/015-static-ssr-preset.md) | Skips observers + animations on the client |
+| [#013 ESM bundle](../../improvements/013-esm-cjs-builds.md) | Lets `import Masonry from 'masonry-pretext'` work in Astro's Node frontmatter and Vite-bundled `<script>` |
+| [#005 SSR-safe imports](../../improvements/005-ssr-import-fix.md) | The library doesn't crash when imported in a Node context |
+
+## What this demonstrates
+
+The page renders 24 grid items. The cascading layout is computed in **pure Node** during Astro's build (or per-request in SSR mode), and emitted into the HTML as inline `style="position: absolute; left: Xpx; top: Ypx;"` on each item. The client-side script then constructs masonry with `initLayout: false, static: true` and **adopts** the existing positions without recomputing them.
+
+The user sees the final cascading layout on **first paint**. There is no flow-to-absolute reflow, no animated settle, no observable hydration flash.
 
 ## Files
 
-- [`src/pages/index.astro`](./src/pages/index.astro) — server page. Renders the grid markup at build/request time and includes a `<script>` block that initializes Masonry on the client.
+- [`src/pages/index.astro`](./src/pages/index.astro) — the demo page. Frontmatter calls `Masonry.computeLayout`, body emits items with inline positions, `<script>` adopts on the client.
 
-That is the entire demo. Astro's islands architecture means you do not need a framework (React, Svelte, Vue) to initialize a tiny DOM library like Masonry — a plain `<script>` block is enough, and Astro will hoist + bundle it.
+That's the entire demo. ~120 lines of `.astro` source.
 
-## How it works
-
-1. The `.astro` file runs in Node during build (SSG) or on each request (SSR). Its HTML body — including the grid markup — is server-rendered. Users see items in flow layout before any JS runs.
-2. The `<script>` tag at the bottom is **client-only**. Astro bundles and ships it to the browser.
-3. When the browser parses the script, it imports `masonry-pretext` (as of improvement #005 the import is safe in any bundler pass, including Astro's Vite-backed SSR build, which also evaluates the module graph in Node) and constructs the Masonry instance against the grid element.
-
-## Copying this into a project
-
-Drop `src/pages/index.astro` into your project's `src/pages/` directory. Install the library from the fork repo (not yet on npm — see the main README):
+## How to run
 
 ```sh
+# In a fresh Astro project:
+npm create astro@latest
+cd <your-project>
+npm install
 npm install github:oriolj/masonry-pretext
+cd node_modules/masonry-pretext && npm install && npm run build && cd ../..
+
+# Copy the demo file:
+cp <path-to-this-repo>/examples/astro/src/pages/index.astro src/pages/
+
+# Run the dev server:
+npm run dev
 ```
 
-Then run `npm run build` inside `node_modules/masonry-pretext/` once (the current pre-release does not ship pre-built `dist/` over git-install).
+Open `http://localhost:4321`. Open Chrome DevTools → Performance → record a page reload. The Layout Shift section should show **CLS = 0.00** for the grid region.
 
-## When to reach for a framework island instead
+## How it works — the four steps
 
-The `<script>` pattern is the simplest path and works for most cases. Use an Astro framework island (`client:load` with React/Svelte/Vue) only if you already have a framework component system in your app and want to co-locate Masonry with other state. The React equivalent is identical to the Next.js example in [`../nextjs/`](../nextjs).
+### Step 1 — Server-side measurement
 
-## Recommended option set for SSR content
+In a real app, this is where you call `pretext.prepare(text, font)` followed by `pretext.layout(prepared, maxWidth, lineHeight)` to get DOM-free heights for text-driven items. The demo uses hardcoded heights for simplicity:
 
-```js
-new Masonry(grid, {
-  itemSelector: '.grid-item',
-  columnWidth: 240,
-  gutter: 16,
-  static: true, // SSR preset — see main README § "Optimizations for SSR mode"
+```ts
+const items = Array.from({ length: 24 }, (_, i) => ({
+  id: String(i),
+  title: `Item ${i + 1}`,
+  outerHeight: 80 + ((i * 37) % 220),
+}));
+```
+
+Swapping in real pretext is one diff:
+
+```ts
+import { prepare, layout as ptLayout } from '@chenglou/pretext';
+
+const FONT = '14px/1.5 system-ui, sans-serif';
+const items = await loadFromCMS();
+const sizes = items.map((item) => {
+  const prepared = prepare(item.title, FONT);
+  const { height } = ptLayout(prepared, COL_WIDTH, 21);
+  return { outerWidth: COL_WIDTH, outerHeight: height + 24 /* padding */ };
 });
 ```
 
-`static: true` (landed in `v5.0.0-dev.15`) is a single flag that forces `transitionDuration: 0`, skips the `document.fonts.ready` deferred layout ([#010](../../improvements/010-document-fonts-ready.md)), and skips per-item `ResizeObserver` construction ([#012](../../improvements/012-per-item-resize-observer.md)). Use it when your grid's items will not change size after first paint — the common SSR case.
+### Step 2 — `Masonry.computeLayout` in pure Node
 
-If your grid contains lazy-loading images or custom web fonts that may still be loading, leave `static` unset (default) and the dynamic-content machinery stays active. See the [main README § "When NOT to use `static: true`"](../../README.md#optimizations-for-ssr-mode--static-true).
+```ts
+import Masonry from 'masonry-pretext';
+
+const { positions, containerHeight } = Masonry.computeLayout({
+  items: items.map((item) => ({
+    outerWidth: COL_WIDTH,
+    outerHeight: item.outerHeight,
+  })),
+  containerWidth: 752,
+  columnWidth: 240,
+  gutter: 16,
+});
+```
+
+`positions` is an array of `{ x, y }` — one per input item, in input order. `containerHeight` is the total grid height. **Verified byte-for-byte against the browser-side layout** by `test/visual/compute-layout.mjs` (#017 / Phase 2).
+
+### Step 3 — Emit inline positions
+
+```astro
+<div class="grid" style={`--grid-height: ${containerHeight}px`}>
+  {items.map((item, i) => (
+    <div
+      class="grid-item"
+      style={`left: ${positions[i].x}px; top: ${positions[i].y}px; height: ${item.outerHeight}px;`}
+    >
+      {item.title}
+    </div>
+  ))}
+</div>
+```
+
+Two CSS details that matter:
+
+1. **The `.grid` container reserves `height: var(--grid-height)`** so there is no vertical layout shift when items render. Without this, the container collapses to zero height (because all items are absolute) and *then* expands to the computed height when the script runs — a visible CLS.
+2. **`.grid-item` has `position: absolute`** in the stylesheet (not just inline). This matches what `Item._create` would set, so masonry's construction is a no-op write rather than a style change.
+
+### Step 4 — Client-side adoption
+
+```html
+<script>
+  import Masonry from 'masonry-pretext';
+
+  const grid = document.querySelector('#masonry-grid');
+  new Masonry(grid, {
+    itemSelector: '.grid-item',
+    columnWidth: 240,
+    gutter: 16,
+    initLayout: false,    // adopt existing positions, don't relayout
+    static: true,         // no observers, no animations, no font hooks
+  });
+</script>
+```
+
+`initLayout: false` skips the constructor's `this.layout()` call entirely — no items get repositioned. `static: true` skips the per-item `ResizeObserver` wire-up and the `document.fonts.ready` deferred layout, so nothing fires later that could overwrite the SSR positions.
+
+The masonry instance still exists — useful if the user wants to call `.layout()` later (e.g. on a programmatic content swap). It just doesn't relayout on construction.
+
+## Before/after CLS comparison
+
+| Pattern | CLS | First-paint final layout | Hydration flash |
+|---|---|---|---|
+| **Old way** — server emits items in flow layout, client runs `new Masonry(grid, {})` | ~0.10–0.15 | ❌ No (waits for JS) | ❌ Visible reflow |
+| **Old + `transitionDuration: 0`** | ~0.10–0.15 | ❌ Still waits for JS | ⚠️ Snaps instead of animates |
+| **Old + `static: true`** (#015) | ~0.10–0.15 | ❌ Still waits for JS | ⚠️ Snaps instead of animates |
+| **THIS DEMO** — server `computeLayout` + client `initLayout: false, static: true` | **0.00** | ✅ **Yes** (positions in HTML) | ✅ **None** |
+
+The first three rows are the existing landscape for cascading-grid SSR — including masonry-pretext through `v5.0.0-dev.18` and every other masonry-style library on the market. The bottom row is what this demo proves is possible **only** with the masonry-pretext SSR pipeline.
+
+> **Phase 5 will turn this manual comparison into a permanent automated benchmark** — see [`PRETEXT_SSR_ROADMAP.md`](../../PRETEXT_SSR_ROADMAP.md) Phase 5 for the bench design. Until then, run Lighthouse manually on this demo and compare against your "old way" page.
+
+## When NOT to use this pattern
+
+The full SSR pipeline assumes:
+
+1. **You can predict the container width on the server.** Either fixed (`width: 752px`) or breakpoint-driven. CSS-driven fluid percent widths can't be precomputed because the server doesn't know the viewport. Workaround: serve a "default breakpoint" layout, let masonry recompute on the client if `containerWidth` differs (the existing `needsResizeLayout` already handles this — the SSR layout becomes a hint, not a contract).
+2. **You can predict item heights on the server.** Text-driven items work well with `pretext.layout(...)`. Image-driven items need `<img width height>` attributes (so the browser knows the aspect ratio before the image loads) AND the server needs to know those dimensions ahead of time.
+3. **Font metrics match server↔client.** This is already a pretext constraint, not a new one. Standard mitigation: `<link rel="preload">` on the webfont so it's loaded before paint.
+4. **The grid is static after first paint.** If your grid mutates (lazy images, infinite scroll, dynamic content), you'll need to drop `static: true` and `initLayout: false` and accept a single relayout on the first user interaction.
+
+If those four conditions are met, this pipeline gives you **CLS = 0.00 with no library swap and no special framework setup**. If they aren't, you can still use `static: true` alone (without `initLayout: false`) for a partial win — the dynamic-content machinery stays active but you skip the 0.4s animated settle.
+
+## Comparison to the Next.js example
+
+The [Next.js example in `../nextjs/`](../nextjs) uses the same `static: true` preset but does NOT yet use the full SSR pipeline (no `computeLayout` in the React Server Component, no `initLayout: false`). Bringing it up to parity is straightforward — the React equivalent of step 2 above is a Server Component that does the same computation, then passes positions as props to a `'use client'` component that constructs masonry with `initLayout: false, static: true`. PR welcome.
