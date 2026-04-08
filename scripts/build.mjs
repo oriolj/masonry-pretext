@@ -405,6 +405,27 @@ function setup() {
   if ( typeof document === 'undefined' ) return;
   var readyState = document.readyState;`,
       },
+      // ── #022 — delete the setTimeout(0) docReady wrapper (§ L.6) ─────────
+      // The wrapper was a flickity-specific workaround (metafizzy/flickity#441)
+      // to defer auto-init by one task so other widgets had time to register.
+      // masonry-pretext does not bundle flickity and the only docReady caller
+      // is `htmlInit` (which is itself slated for deletion in item E). The
+      // setTimeout wraps a synchronous callback in async noise that swallows
+      // exceptions and adds a tick of latency. Deleted.
+      {
+        description: '[#022] fizzy-ui-utils.js docReady — drop the setTimeout(0) wrapper',
+        find: `  if ( readyState == 'complete' || readyState == 'interactive' ) {
+    // do async to allow for other scripts to run. metafizzy/flickity#441
+    setTimeout( callback );
+  } else {
+    document.addEventListener( 'DOMContentLoaded', callback );
+  }`,
+        replace: `  if ( readyState == 'complete' || readyState == 'interactive' ) {
+    callback();
+  } else {
+    document.addEventListener( 'DOMContentLoaded', callback );
+  }`,
+      },
       // ── #008 — delete fizzy-ui-utils methods unused by masonry/outlayer ────
       // Audit (greppped masonry.js + node_modules/outlayer/{outlayer,item}.js)
       // shows utils.modulo and utils.getParent are NEVER called from the

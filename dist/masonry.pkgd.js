@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.21
+ * Masonry PACKAGED v5.0.0-dev.22
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -312,7 +312,7 @@ var Masonry = (() => {
           if (typeof document === "undefined") return;
           var readyState = document.readyState;
           if (readyState == "complete" || readyState == "interactive") {
-            setTimeout(callback);
+            callback();
           } else {
             document.addEventListener("DOMContentLoaded", callback);
           }
