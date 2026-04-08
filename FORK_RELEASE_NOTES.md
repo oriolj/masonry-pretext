@@ -15,6 +15,24 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.47 — 2026-04-09 — `pause()` / `resume()` (D.10)
+
+> Tag: `v5.0.0-dev.47` · Improvement: [`047-pause-resume.md`](./improvements/047-pause-resume.md) · Closes downstream consumer ask **D.10**
+
+New `msnry.pause()` and `msnry.resume()` methods that suspend the per-item ResizeObserver and MutationObserver callbacks. **Useful during View Transitions**, when the document is in a half-swapped state and observers might fire on items about to be removed (because the transition's exit animation changes their visual size).
+
+```ts
+document.startViewTransition(async () => {
+  msnry.pause();
+  // ...DOM swap, route navigation, etc...
+  msnry.resume();
+});
+```
+
+The observers themselves stay connected — only the rAF coalescing + relayout path is gated. Events that arrive while paused are collapsed into a single catch-up `layout()` call when `resume()` is invoked.
+
+**Cost:** +51 B gzipped on `dist/masonry.pkgd.min.js`. New `pause-resume.html` discriminating fixture verifies that pause genuinely suppresses the relayout that would otherwise fire on item resize, and resume triggers the catch-up layout.
+
 ### v5.0.0-dev.46 — 2026-04-09 — `replaceItems` atomic swap (D.9)
 
 > Tag: `v5.0.0-dev.46` · Improvement: [`046-replace-items.md`](./improvements/046-replace-items.md) · Closes downstream consumer ask **D.9**

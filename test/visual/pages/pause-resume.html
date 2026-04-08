@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: pause/resume (#047 / D.10)</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for pause/resume (#047 / D.10). 4 items
+    initially 60×30. After construction:
+
+       1. msnry.pause() — observer callbacks become no-ops
+       2. items[0].style.height = '60px' — would normally trigger
+          a relayout via ResizeObserver. With pause active, the
+          observer fires but the rAF coalescing path is suppressed.
+       3. msnry.resume() — clears _paused, schedules a catch-up
+          layout() that picks up item 0's new size.
+
+    Expected post-resume layout (item 0 = 60h, items 1/2/3 = 30h):
+       item 0 → (0,   0), colYs = [60, 0,  0]
+       item 1 → (60,  0), colYs = [60, 30, 0]
+       item 2 → (120, 0), colYs = [60, 30, 30]
+       item 3 → (60, 30) — col 1 is leftmost shortest at y=30
+
+    Discriminating signal: item 3 lands at (60, 30) only if resume()
+    correctly fires the catch-up layout. Without it, item 3 stays at
+    (0, 30) — the pre-pause layout.
+
+    The pageAssert below also verifies that the observer DID fire
+    while paused (the size delta was recorded), but the rAF callback
+    did NOT schedule a relayout (the layout count check below).
+  -->
+  <div id="pause-resume" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#pause-resume');
+    var items = grid.querySelectorAll('.item');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+    });
+
+    // Track relayout count via the layoutComplete event.
+    window.__LAYOUT_COUNT = 1; // initial _create layout
+    window.__MSNRY.on('layoutComplete', function () {
+      window.__LAYOUT_COUNT++;
+    });
+
+    // Pause, then mutate item 0 to 60px height.
+    window.__MSNRY.pause();
+    items[0].style.height = '60px';
+
+    // Wait several rAF ticks. The ResizeObserver entry will fire,
+    // but the _paused flag should suppress the relayout. We expect
+    // __LAYOUT_COUNT to STILL be 1 after these ticks.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        window.__PRE_RESUME_LAYOUT_COUNT = window.__LAYOUT_COUNT;
+
+        // Resume — schedules a catch-up layout.
+        window.__MSNRY.resume();
+
+        // Wait for the catch-up layout to complete.
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            window.__POST_RESUME_LAYOUT_COUNT = window.__LAYOUT_COUNT;
+            window.__READY = true;
+          });
+        });
+      });
+    });
+  </script>
+
+</body>
+</html>

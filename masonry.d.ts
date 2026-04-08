@@ -479,6 +479,28 @@ export default class Masonry {
   /** Tear down the instance: clean up styles, listeners, internal state. */
   destroy(): void;
 
+  /**
+   * **Suspend the per-item ResizeObserver and MutationObserver
+   * callbacks** (#047 / D.10). Useful during View Transitions, when
+   * the document is in a half-swapped state and observers might fire
+   * on items about to be removed (because the transition's exit
+   * animation changes their visual size). Call `pause()` before the
+   * transition starts and `resume()` after it completes.
+   *
+   * The observers themselves stay connected — only the rAF coalescing
+   * + relayout path is gated. Events that arrive while paused are
+   * collapsed into a single catch-up `layout()` call when `resume()`
+   * is invoked.
+   *
+   * Idempotent: calling `pause()` twice has no effect; calling
+   * `resume()` when not paused is a no-op.
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/047-pause-resume.md
+   */
+  pause(): void;
+  /** Counterpart to `pause()`. Triggers one catch-up `layout()` pass. */
+  resume(): void;
+
   /** Subscribe to a masonry event (`'layoutComplete'`, `'removeComplete'`,
    *  `'layoutError'` — see {@link MasonryLayoutErrorEvent}). */
   on(eventName: string, listener: (...args: unknown[]) => void): this;

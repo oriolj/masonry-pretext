@@ -252,6 +252,38 @@ const cases = [
     ],
   },
   {
+    // pause/resume (#047 / D.10) — see test/visual/pages/pause-resume.html
+    // for the discriminator design. After construction, calls
+    // msnry.pause(), mutates item 0's height (would normally trigger
+    // a relayout via ResizeObserver), then calls msnry.resume() which
+    // schedules a catch-up layout. The pageAssert verifies that the
+    // pre-resume layout count was unchanged from the initial layout
+    // (i.e., the pause actually suppressed the observer's relayout)
+    // and the post-resume count incremented by 1 (the catch-up).
+    name: 'pause-resume',
+    page: 'pause-resume.html',
+    container: '#pause-resume',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '60px',  top: '30px' }, // discriminating: catch-up layout fired
+    ],
+    pageAssert: () => {
+      const pre = window.__PRE_RESUME_LAYOUT_COUNT;
+      const post = window.__POST_RESUME_LAYOUT_COUNT;
+      if (pre === undefined) return '__PRE_RESUME_LAYOUT_COUNT not captured';
+      if (post === undefined) return '__POST_RESUME_LAYOUT_COUNT not captured';
+      // Pre-resume: only the initial layout has happened. The
+      // observer fired (because items[0] grew) but pause suppressed
+      // the relayout, so the count should still be 1.
+      if (pre !== 1) return `expected pre-resume count 1 (pause suppressed observer relayout), got ${pre}`;
+      // Post-resume: the catch-up layout from resume() ran, so count = 2.
+      if (post !== 2) return `expected post-resume count 2 (catch-up layout), got ${post}`;
+      return null;
+    },
+  },
+  {
     // replaceItems atomic swap (#046 / D.9) — see test/visual/pages/replace-items.html
     // for the discriminator design. Starts with 3 old items, then calls
     // replaceItems with 4 new items (item 0 is taller). Layout assertion

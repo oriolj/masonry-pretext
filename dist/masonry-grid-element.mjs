@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.46
+ * Masonry PACKAGED v5.0.0-dev.47
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -937,7 +937,7 @@ var require_masonry = __commonJS({
       Masonry.prototype = Object.create(Outlayer.prototype);
       Masonry.prototype.constructor = Masonry;
       Masonry.namespace = "masonry";
-      Masonry.version = true ? "5.0.0-dev.46" : "source";
+      Masonry.version = true ? "5.0.0-dev.47" : "source";
       Masonry.fork = "masonry-pretext";
       Masonry.defaults = Object.assign({}, Outlayer.defaults);
       Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
@@ -1198,10 +1198,11 @@ var require_masonry = __commonJS({
           var pendingMutationRaf = null;
           this._mutationObserver = new MutationObserver(function() {
             if (self3._ignoreMutations) return;
+            if (self3._paused) return;
             if (pendingMutationRaf !== null) return;
             pendingMutationRaf = requestAnimationFrame(function() {
               pendingMutationRaf = null;
-              if (self3._destroyed) return;
+              if (self3._destroyed || self3._paused) return;
               self3.reloadItems();
               self3.layout();
             });
@@ -1214,6 +1215,7 @@ var require_masonry = __commonJS({
         this._resizeLastSizes = /* @__PURE__ */ new WeakMap();
         var pendingRaf = null;
         this._resizeObserver = new ResizeObserver(function(entries) {
+          if (self._paused) return;
           var changed = false;
           for (var i = 0; i < entries.length; i++) {
             var entry = entries[i];
@@ -1229,7 +1231,7 @@ var require_masonry = __commonJS({
           if (changed && pendingRaf === null) {
             pendingRaf = requestAnimationFrame(function() {
               pendingRaf = null;
-              if (!self._destroyed) self.layout();
+              if (!self._destroyed && !self._paused) self.layout();
             });
           }
         });
@@ -1284,6 +1286,14 @@ var require_masonry = __commonJS({
         } finally {
           this._ignoreMutations = false;
         }
+      };
+      proto.pause = function() {
+        this._paused = true;
+      };
+      proto.resume = function() {
+        if (!this._paused) return;
+        this._paused = false;
+        if (!this._destroyed) this.layout();
       };
       proto.replaceItems = function(newElems) {
         var currentElems = this.items.map(function(item) {

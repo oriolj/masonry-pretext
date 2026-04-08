@@ -541,10 +541,12 @@
         // which fires childList, otherwise we'd schedule a spurious
         // second relayout immediately after the user's API call.
         if ( self3._ignoreMutations ) return;
+        // #047 / D.10 — paused observer ignores events entirely.
+        if ( self3._paused ) return;
         if ( pendingMutationRaf !== null ) return;
         pendingMutationRaf = requestAnimationFrame( function() {
           pendingMutationRaf = null;
-          if ( self3._destroyed ) return;
+          if ( self3._destroyed || self3._paused ) return;
           self3.reloadItems();
           self3.layout();
         });
@@ -563,6 +565,10 @@
     this._resizeLastSizes = new WeakMap();
     var pendingRaf = null;
     this._resizeObserver = new ResizeObserver( function( entries ) {
+      // #047 / D.10 — paused observers ignore events entirely.
+      // The observer stays connected and accumulates entries, but
+      // the rAF coalescing + relayout path is suppressed.
+      if ( self._paused ) return;
       var changed = false;
       for ( var i = 0; i < entries.length; i++ ) {
         var entry = entries[i];
@@ -578,7 +584,7 @@
       if ( changed && pendingRaf === null ) {
         pendingRaf = requestAnimationFrame( function() {
           pendingRaf = null;
-          if ( !self._destroyed ) self.layout();
+          if ( !self._destroyed && !self._paused ) self.layout();
         });
       }
     });
@@ -648,6 +654,32 @@
     this._ignoreMutations = true;
     try { return basePrepended.call( this, elems ); }
     finally { this._ignoreMutations = false; }
+  };
+
+  // ── #047 / D.10 — pause / resume ─────────────────────────────────
+  // Suspends the per-item ResizeObserver and the MutationObserver
+  // callbacks via a flag check. Useful during View Transitions: the
+  // document is in a half-swapped state, observers might fire on
+  // items about to be removed (because the transition's exit
+  // animation changes their visual size), and the consumer wants
+  // to suppress those events without disconnecting the observers.
+  //
+  // Implementation: a single `_paused` flag that the observer
+  // callbacks check before scheduling a relayout. When `pause()` is
+  // called, both observer callbacks become no-ops; `resume()` clears
+  // the flag and schedules an immediate layout pass to catch up on
+  // any size changes that happened while paused. The observers
+  // themselves stay connected — only the rAF coalescing path is
+  // gated.
+  proto.pause = function() {
+    this._paused = true;
+  };
+  proto.resume = function() {
+    if ( !this._paused ) return;
+    this._paused = false;
+    // One catch-up layout pass — items may have changed size while
+    // paused, but the observer callbacks were ignoring the events.
+    if ( !this._destroyed ) this.layout();
   };
 
   // ── #046 / D.9 — replaceItems atomic swap ─────────────────────────────
