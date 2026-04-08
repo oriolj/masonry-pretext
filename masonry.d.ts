@@ -384,6 +384,47 @@ export interface ComputeLayoutOptions {
    *  index. Default is leftmost-shortest. See `MasonryOptions.pickColumn`
    *  for the full doc. */
   pickColumn?: ( colGroup: number[] ) => number;
+
+  /**
+   * **`pretextify` shorthand** (#035 / PRETEXT_SSR Phase 6). Convenience
+   * layer over the raw `pretextify` callback for the common case where
+   * you have a measurement function (e.g. `@chenglou/pretext`'s
+   * `prepare` + `layout`) and want masonry to build the closure +
+   * WeakMap cache for you.
+   *
+   * If both `pretextify` and `pretextOptions` are set, `pretextify` wins.
+   *
+   * Example:
+   *
+   * ```ts
+   * import { prepare, layout } from '@chenglou/pretext';
+   * new Masonry(grid, {
+   *   columnWidth: 280,
+   *   pretextOptions: {
+   *     measure: (text, font, maxWidth) => {
+   *       const prepared = prepare(text, font);
+   *       return layout(prepared, maxWidth, 24).height;
+   *     },
+   *     font: '16px/1.5 Inter, sans-serif',
+   *     text: elem => elem.dataset.text || elem.textContent,
+   *     padding: 24,
+   *   },
+   * });
+   * ```
+   */
+  pretextOptions?: {
+    /** Measurement function. Returns the rendered height for `text`
+     *  laid out at `font` within `maxWidth`. Wraps `pretext.layout` or
+     *  any equivalent measurement library. */
+    measure: ( text: string, font: string, maxWidth: number ) => number;
+    /** Font shorthand string. Passed to `measure`. */
+    font: string;
+    /** Optional text accessor. Defaults to `elem.textContent`. */
+    text?: ( elem: HTMLElement ) => string;
+    /** Optional padding to add to the measured height (e.g. for
+     *  per-item border + padding). */
+    padding?: number;
+  };
 }
 
 /**

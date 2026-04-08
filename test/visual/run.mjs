@@ -235,6 +235,22 @@ const cases = [
       { left: '0px',   top: '30px' },
     ],
   },
+  {
+    // pretextOptions shorthand (#035 / PRETEXT_SSR Phase 6) — see
+    // test/visual/pages/pretext-options.html. Same shape as pretext.html
+    // (#009) but uses the new convenience layer instead of a hand-written
+    // pretextify callback. If wired, item 0 measures as 60 (not 30) and
+    // item 3 lands at (60, 30). If broken, item 3 lands at (0, 30).
+    name: 'pretext-options',
+    page: 'pretext-options.html',
+    container: '#pretext-options',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '60px',  top: '30px' }, // discriminating: pretextOptions consulted
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

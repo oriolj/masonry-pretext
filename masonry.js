@@ -56,6 +56,46 @@
 
   var proto = Masonry.prototype;
 
+  // ── #035 / PRETEXT_SSR Phase 6 — `pretextOptions` shorthand ──────────
+  // Convenience layer over the existing #009 `pretextify` callback. The
+  // user supplies a measurement function + font + optional text accessor;
+  // masonry constructs the pretextify closure internally with a built-in
+  // WeakMap cache, removing ~10-20 lines of boilerplate per usage.
+  //
+  // Example:
+  //
+  //   import { prepare, layout } from '@chenglou/pretext';
+  //   new Masonry(grid, {
+  //     columnWidth: 280,
+  //     pretextOptions: {
+  //       measure: function(text, font, maxWidth) {
+  //         var prepared = prepare(text, font);
+  //         return layout(prepared, maxWidth, 24).height;
+  //       },
+  //       font: '16px/1.5 Inter, sans-serif',
+  //       text: function(elem) { return elem.dataset.text || elem.textContent; },
+  //       padding: 24, // optional, added to the measured height
+  //     },
+  //   });
+  //
+  // If both `pretextify` and `pretextOptions` are set, `pretextify` wins.
+  function buildPretextifyFromOptions( options ) {
+    var po = options.pretextOptions;
+    if ( !po || !po.measure ) return null;
+    var cw = options.columnWidth;
+    var cache = new WeakMap();
+    var padding = po.padding || 0;
+    var getText = po.text || function( elem ) { return elem.textContent; };
+    return function pretextify( elem ) {
+      var cached = cache.get( elem );
+      if ( cached ) return cached;
+      var height = po.measure( getText( elem ), po.font, cw );
+      var size = { outerWidth: cw, outerHeight: height + padding };
+      cache.set( elem, size );
+      return size;
+    };
+  }
+
   // ── #014 — percentage columnWidth detection (§ P.1 / closes
   // desandro/masonry#1006, the highest-reaction open upstream issue at
   // 53 reactions). When the user specifies a percentage column width, the
@@ -364,6 +404,12 @@
     // else so item.transition() reads the overridden value.
     if ( this.options.static ) {
       this.options.transitionDuration = 0;
+    }
+    // #035 — build the pretextify closure from `pretextOptions` if the
+    // user took the shorthand path. Skipped if they already supplied a
+    // pretextify callback directly (`pretextify` wins).
+    if ( !this.options.pretextify && this.options.pretextOptions ) {
+      this.options.pretextify = buildPretextifyFromOptions( this.options );
     }
     baseCreate.call( this );
     // ── #010 — fonts.ready first-paint gate (skipped in static mode) ──

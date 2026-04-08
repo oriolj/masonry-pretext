@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: pretextOptions (#035 / PRETEXT_SSR Phase 6)</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for the `pretextOptions` shorthand
+    (#035 / PRETEXT_SSR_ROADMAP Phase 6). Same shape as pretext.html
+    (#009): all 4 items are 60×30 in the DOM but the synthetic measure
+    function returns variable heights — item 0 gets outerHeight: 60.
+
+    With pretextOptions wired correctly, masonry uses the measured
+    height (60 for item 0) and item 3 lands at col 1 (60, 30) — same
+    layout as pretext.html / fonts-ready.html / resize-observer.html.
+
+    With pretextOptions broken / missing, masonry uses the DOM
+    measurement (30) for item 0 and item 3 lands at col 0 (0, 30) —
+    same as static-mode.html.
+  -->
+  <div id="pretext-options" class="container">
+    <div class="item" data-h="60"></div>
+    <div class="item" data-h="30"></div>
+    <div class="item" data-h="30"></div>
+    <div class="item" data-h="30"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    window.__MSNRY = new Masonry('#pretext-options', {
+      columnWidth: 60,
+      transitionDuration: 0,
+      pretextOptions: {
+        // Synthetic measure function: just reads `data-h` from the
+        // element. The shorthand wraps this in a WeakMap-cached
+        // pretextify callback automatically.
+        measure: function (text, font, maxWidth) {
+          return parseFloat(text);
+        },
+        font: 'irrelevant — measure ignores it',
+        // Custom text accessor reads data-h instead of textContent.
+        text: function (elem) { return elem.dataset.h; },
+      },
+    });
+    window.__READY = true;
+  </script>
+
+</body>
+</html>

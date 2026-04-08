@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.34
+ * Masonry PACKAGED v5.0.0-dev.35
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -929,6 +929,24 @@ var MasonryGridElement = (() => {
         Masonry.Item = MasonryItem;
         Masonry.compatOptions.fitWidth = "isFitWidth";
         var proto = Masonry.prototype;
+        function buildPretextifyFromOptions(options) {
+          var po = options.pretextOptions;
+          if (!po || !po.measure) return null;
+          var cw = options.columnWidth;
+          var cache = /* @__PURE__ */ new WeakMap();
+          var padding = po.padding || 0;
+          var getText = po.text || function(elem) {
+            return elem.textContent;
+          };
+          return function pretextify(elem) {
+            var cached = cache.get(elem);
+            if (cached) return cached;
+            var height = po.measure(getText(elem), po.font, cw);
+            var size = { outerWidth: cw, outerHeight: height + padding };
+            cache.set(elem, size);
+            return size;
+          };
+        }
         var PERCENT_RE = /^\s*(\d*\.?\d+)\s*%\s*$/;
         function detectPercentWidth(elem) {
           var inline = elem.style && elem.style.width;
@@ -1096,6 +1114,9 @@ var MasonryGridElement = (() => {
         proto._create = function() {
           if (this.options.static) {
             this.options.transitionDuration = 0;
+          }
+          if (!this.options.pretextify && this.options.pretextOptions) {
+            this.options.pretextify = buildPretextifyFromOptions(this.options);
           }
           baseCreate.call(this);
           if (!this.options.static && typeof document !== "undefined" && document.fonts && document.fonts.status !== "loaded") {
