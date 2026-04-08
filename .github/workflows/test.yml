@@ -1,0 +1,67 @@
+# .github/workflows/test.yml — masonry-pretext CI gate
+#
+# Runs the same `make ci` (install + build + test) sequence the maintainer
+# runs locally. The "every commit must pass `make test`" rule from
+# FORK_ROADMAP.md § Methodology is now enforced by automation, not just
+# convention.
+#
+# Triggered on every push to master and every PR. The build is fast
+# (~14 ms) and the test suite (4/6 visual fixtures + SSR smoke + no-jquery
+# string check) takes ~5-10 seconds total — the only slow step is the
+# initial Playwright chromium download (~100 MB). It's cached across runs
+# via the actions/cache step below.
+#
+# Hardened chromium launch flags (`--no-sandbox`, `--disable-dev-shm-usage`,
+# `--disable-gpu`) live in test/visual/_harness.mjs and are required for
+# this workflow to run on the unprivileged ubuntu-latest container.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    name: build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Cache Playwright browsers (~100 MB chromium download). The cache key
+      # tracks the @playwright/test version pinned in package.json — when we
+      # bump it, the cache invalidates and we download a fresh build.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: make build
+
+      - name: Run gates (visual + SSR + no-jquery)
+        run: make test
+
+      - name: Print metrics
+        if: always()
+        run: make measure

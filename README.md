@@ -36,6 +36,7 @@ User-visible wins that have already landed in the fork. Each entry links to the 
 | `v5.0.0-dev.8` | **Deleted unused `fizzy-ui-utils` methods.** An audit of every `utils.X` call site in `masonry.js` and `outlayer/{outlayer,item}.js` revealed two methods that are never called from the masonry consumption path: `utils.modulo` and `utils.getParent`. esbuild can't tree-shake them (they're properties on a `utils` object so the whole object stays reachable), so they were deleted explicitly via two build-time transforms. `dist/masonry.pkgd.min.js` drops by **−138 B raw / −53 B gzipped / −43 B brotli**. Vs upstream v4.2.2: now **−10.97 % raw / −6.73 % gzipped / −6.04 % brotli**. The smallest L.* deletion so far — pure deletions are approaching diminishing returns; the next big size wins will come from architectural changes (event target replacement, ResizeObserver, etc.). All three gates green. Full record in [`improvements/008-delete-unused-fizzy-utils.md`](./improvements/008-delete-unused-fizzy-utils.md). |
 | `v5.0.0-dev.9` | **The headline fork feature: pretext integration.** Added a `pretextify(element)` option callback to Masonry. If set and returns `{outerWidth, outerHeight}`, the size is used as-is and `item.getSize()` (which forces a DOM reflow) is **skipped entirely**. Designed to plug into [`@chenglou/pretext`](https://www.npmjs.com/package/@chenglou/pretext) for arithmetic text measurement, but library-agnostic — works with any DOM-free measurement strategy or pre-computed sizes. **Measured speedup:** ~**1.2-1.3× faster initial layout (17-24% reduction)** across grids of 100-2000 items, verified by a new `test/visual/bench-pretext.mjs` benchmark. The bench is checked in as a permanent tool — `node test/visual/bench-pretext.mjs` reproduces the numbers. **Cost: +22 B gzipped** on `dist/masonry.pkgd.min.js`. Discriminating visual fixture (`test/visual/pages/pretext.html`) proves the callback is really bypassing DOM measurement. All five visual fixtures + SSR + no-jquery gates green. Full record in [`improvements/009-pretext-integration.md`](./improvements/009-pretext-integration.md). |
 | `v5.0.0-dev.10` | **Custom font flicker fix — closes upstream `desandro/masonry#1182`.** When a web font hasn't finished loading at construction time, masonry measures items at the fallback font's height and the layout overlaps until something triggers a relayout. Added a `_create` override that schedules a deferred `layout()` when `document.fonts.ready` resolves. Guarded by `typeof document` (SSR-safe), `document.fonts.status !== 'loaded'` (no-op when fonts are already loaded), and an alive-check (no-op if the instance was destroyed before fonts loaded). **Cost: +63 B gzipped** on `dist/masonry.pkgd.min.js` for an issue that's been open in upstream since 2022 with no fix. Discriminating visual fixture (`test/visual/pages/fonts-ready.html`) mocks `document.fonts.ready` and asserts the deferred layout fires (item 3 lands at the post-font-load position, not the pre-font-load position). All six visual fixtures + SSR + no-jquery gates green. Full record in [`improvements/010-document-fonts-ready.md`](./improvements/010-document-fonts-ready.md). |
+| `v5.0.0-dev.11` | **Foundation fixes (Tier 0): README + packaging + CI + portable harness.** Closes the four foundation gaps surfaced by the post-#010 multi-review. README's `Install` / `Initialize` sections were stale (told users to `npm install masonry-layout`, use Bower, and call `$('.grid').masonry({...})` — none of which work) — now rewritten to match what masonry-pretext actually is, with a `From source` install path, the vanilla API examples, and a real `pretextify` usage example. `package.json` gained `exports`, `module`, `types`, and `sideEffects: false` fields so modern bundlers (Vite/Rollup/esbuild/webpack 5) can find the right entry per consumer style; `main` now points at `dist/masonry.pkgd.min.js` instead of the source UMD wrapper. New hand-written `masonry.d.ts` (~210 lines) gives TypeScript users autocomplete on the public surface — including the `pretextify` callback typed correctly. New `.github/workflows/test.yml` runs `make ci` on push + PR, with cached chromium and the `make measure` size report on every run. Hardened `_harness.mjs` chromium launch with `--no-sandbox` / `--disable-dev-shm-usage` / `--disable-gpu` so the test gate runs in any container/CI environment. **Zero source code change. Zero bundle byte change.** Pure adoption-ergonomics + automation. Full record in [`improvements/011-tier0-foundation.md`](./improvements/011-tier0-foundation.md). |
 
 ### Maintenance & contributions
 
@@ -46,72 +47,106 @@ User-visible wins that have already landed in the fork. Each entry links to the 
 
 ## Install
 
-### Download
+> **`masonry-pretext` is in pre-release** (v5.0.0-dev tags). It is not yet published to npm. The instructions below cover the working install paths until v5.0.0 ships. If you need a stable npm-installable masonry today, use the original [`masonry-layout`](https://www.npmjs.com/package/masonry-layout) instead.
 
-+ [masonry.pkgd.js](https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.js) un-minified, or
-+ [masonry.pkgd.min.js](https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js) minified
+### From source (recommended during pre-release)
 
-### CDN
-
-Link directly to Masonry files on [unpkg](https://unpkg.com/).
-
-``` html
-<script src="https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.js"></script>
-<!-- or -->
-<script src="https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js"></script>
+```sh
+git clone https://github.com/oriolj/masonry-pretext.git
+cd masonry-pretext
+make install   # npm install + downloads chromium for the visual test suite
+make build     # produces dist/masonry.pkgd.{js,min.js} via esbuild (~14 ms)
 ```
 
-### Package managers
+The packaged file lands at `dist/masonry.pkgd.min.js`. Drop it into your page via a `<script>` tag, copy it into your bundler's vendor folder, or `import` from a relative path.
 
-[npm](https://www.npmjs.com/package/masonry-layout): `npm install masonry-layout --save`
+### Pinning a specific dev tag
 
-Bower: `bower install masonry-layout --save`
+Each improvement is released as a `v5.0.0-dev.N` git tag — see the [tag list](https://github.com/oriolj/masonry-pretext/tags). You can pin to one via npm's git URL syntax:
 
-## Support Masonry development
+```sh
+npm install github:oriolj/masonry-pretext#v5.0.0-dev.10
+```
 
-Masonry has been actively maintained and improved upon for 8 years, with 900 GitHub issues closed. Please consider supporting its development by [purchasing a license for one of Metafizzy's commercial libraries](https://metafizzy.co).
+Note: `npm install` from a git URL clones the repo but does **not** run the build. After install, run `make build` (or `npm run build`) inside `node_modules/masonry-pretext/` to produce `dist/`. The published-to-npm release (v5.0.0 final) will ship pre-built `dist/` files.
+
+### Browser support
+
+Chrome 84+ / Firefox 86+ / Safari 15+ / Edge 84+. The fork drops IE / Edge Legacy / Safari ≤14 support — see [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) § Browser support cuts.
 
 ## Initialize
 
-With jQuery
+`masonry-pretext` only supports the **vanilla JS API**. The jQuery shim from upstream was removed in [improvement #006](./improvements/006-remove-jquery.md). Migration is mechanical:
 
-``` js
-$('.grid').masonry({
-  // options...
+```js
+// before (upstream / pre-#006)
+$('.grid').masonry({ columnWidth: 200 });
+$('.grid').masonry('reloadItems');
+$('.grid').masonry('layout');
+
+// after (masonry-pretext)
+const msnry = new Masonry('.grid', { columnWidth: 200 });
+msnry.reloadItems();
+msnry.layout();
+```
+
+### With a selector string
+
+```js
+const msnry = new Masonry('.grid', {
   itemSelector: '.grid-item',
-  columnWidth: 200
+  columnWidth: 200,
 });
 ```
 
-With vanilla JavaScript
+### With an Element
 
-``` js
-// vanilla JS
-// init with element
-var grid = document.querySelector('.grid');
-var msnry = new Masonry( grid, {
-  // options...
+```js
+const grid = document.querySelector('.grid');
+const msnry = new Masonry(grid, {
   itemSelector: '.grid-item',
-  columnWidth: 200
-});
-
-// init with selector
-var msnry = new Masonry( '.grid', {
-  // options...
+  columnWidth: 200,
 });
 ```
 
-With HTML
+### With a `data-masonry` attribute (auto-init)
 
-Add a `data-masonry` attribute to your element. Options can be set in JSON in the value.
+The HTML auto-init path inherited from upstream still works in pre-release. Note that it is currently slated for removal in the v5.0.0 line — see [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) item E (closes upstream `desandro/masonry#1104`).
 
-``` html
+```html
 <div class="grid" data-masonry='{ "itemSelector": ".grid-item", "columnWidth": 200 }'>
   <div class="grid-item"></div>
   <div class="grid-item"></div>
-  ...
 </div>
 ```
+
+### With pretext (the headline fork feature)
+
+Pass a `pretextify(element)` callback to skip per-item DOM measurement. Designed to plug into [`@chenglou/pretext`](https://www.npmjs.com/package/@chenglou/pretext) for arithmetic text measurement against cached font metrics — but the callback is library-agnostic and works with any pre-computed sizes:
+
+```js
+import { prepare, layout } from '@chenglou/pretext';
+
+const cache = new WeakMap();
+const FONT = '16px/1.5 Inter, sans-serif';
+const COL_WIDTH = 280;
+const LINE_HEIGHT = 24;
+
+new Masonry('.grid', {
+  columnWidth: COL_WIDTH,
+  pretextify(elem) {
+    let prepared = cache.get(elem);
+    if (!prepared) {
+      prepared = prepare(elem.dataset.text || elem.textContent, FONT);
+      cache.set(elem, prepared);
+    }
+    const { height } = layout(prepared, COL_WIDTH, LINE_HEIGHT);
+    return { outerWidth: COL_WIDTH, outerHeight: height };
+  },
+});
+```
+
+Measured speedup vs DOM measurement: **~1.2-1.3× faster initial layout (17-24% reduction)** across grids of 100-2000 items. The callback's lookup must be **O(1)** (a `WeakMap` keyed on element, or a cached `prepare()` result) — an O(N) per-call lookup will erase the savings. See [`improvements/009-pretext-integration.md`](./improvements/009-pretext-integration.md) for the full record + the calibration lesson that surfaced this.
 
 ## License
 
@@ -119,4 +154,4 @@ Masonry is released under the [MIT license](http://desandro.mit-license.org). Ha
 
 * * *
 
-Made by David DeSandro
+Original library by David DeSandro · `masonry-pretext` fork by Oriol Jimenez (primarily developed by Claude — see [`CLAUDE.md`](./CLAUDE.md))

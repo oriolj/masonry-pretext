@@ -17,6 +17,61 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.11 — 2026-04-08 — Tier 0 foundation: README + packaging + CI + portable harness
+
+> Tag: `v5.0.0-dev.11` · Improvement: [`011-tier0-foundation.md`](./improvements/011-tier0-foundation.md) · Closes upstream: _none directly_
+
+### Headline
+
+Closes the four foundation gaps surfaced by the post-#010 multi-review (`FORK_ROADMAP.md` § Post-#010 review). **Zero source code change, zero bundle byte change.** Pure adoption ergonomics + automation. Highest-leverage improvement so far per unit of effort.
+
+### Removed
+
+- **Stale upstream README sections** — `Install` / `CDN` / `Package managers` / `Initialize` / `Support Masonry development`. They told users to `npm install masonry-layout`, `bower install`, use unpkg URLs pointing at upstream's frozen v4.2.2, and call `$('.grid').masonry({...})` (jQuery removed in #006). None worked. Replaced with masonry-pretext-correct content.
+
+### Added
+
+- **`masonry.d.ts`** — hand-written TypeScript declarations covering the public API (~210 lines). Includes `MasonryOptions` (with the legacy `is`-prefixed compat aliases), `Masonry` class, `MasonrySize`/`MasonryItem` interfaces, and the `pretextify` callback typed correctly.
+- **`.github/workflows/test.yml`** — GitHub Actions CI. Runs `make ci` on every push to master and every PR. Caches the chromium download. Uses Node 22, ubuntu-latest, `npx playwright install --with-deps chromium`. The "every commit must pass `make test`" rule from § Methodology is now enforced by automation, not just convention.
+- **README sections**: `From source` install, `Pinning a specific dev tag` via `npm install github:...#v5.0.0-dev.10`, `Browser support`, `With pretext` example showing the headline fork feature with `@chenglou/pretext`.
+- **`package.json` `exports` field** with `types` / `import` / `require` / `default` conditions on `.`, plus `./source` and `./unminified` subpath exports for advanced users.
+- **`package.json` `sideEffects: false`** so bundlers can tree-shake.
+- **`package.json` `module` + `types` fields**.
+
+### Changed
+
+- **`package.json` `main`**: `"masonry.js"` → `"./dist/masonry.pkgd.min.js"`. The previous `main` pointed at the source UMD wrapper, which works but doesn't include the build-time transforms (vendor prefix deletion, jQuery removal, etc.). Pointing at the bundled file gives consumers the optimized version.
+- **`test/visual/_harness.mjs`** chromium launch hardened: now passes `--no-sandbox`, `--disable-dev-shm-usage`, `--disable-gpu`. Required for the test suite to run in unprivileged containers (GitHub Actions, Docker, sandboxed dev environments). Verified by an external reviewer whose `npm test` failed on Chromium launch in their sandbox before this change.
+- **`package.json` `files`** array: added `"masonry.d.ts"` so it ships in the npm tarball.
+- **Footer credit** in README: "Original library by David DeSandro · `masonry-pretext` fork by Oriol Jimenez (primarily developed by Claude)".
+
+### Numbers
+
+| File | Metric | pre-011 | v5.0.0-dev.11 | Δ |
+|---|---|---:|---:|---:|
+| `dist/masonry.pkgd.js` | raw / gz / br | 49,493 / 9,337 / 8,306 | 49,493 / 9,337 / 8,306 | **0** (no source change) |
+| `dist/masonry.pkgd.min.js` | raw / gz / br | 21,736 / 6,957 / 6,267 | 21,736 / 6,957 / 6,267 | **0** (no source change) |
+| Visual + SSR + no-jquery gates | passing | all | all | unchanged |
+| `npm pack --dry-run` files | count | 5 | **6** | +1 (`masonry.d.ts`) |
+| `npm pack --dry-run` tarball size | | ~21 KB | ~28 KB | +7 KB |
+| Tracked files | | 75 | 77 | +2 (`masonry.d.ts`, `.github/workflows/test.yml`) |
+| `dependencies` | | 2 | 2 | unchanged |
+| `devDependencies` | | 4 | 4 | unchanged |
+
+### Predicted vs actual
+
+All six predictions matched (dist byte-identical, all gates pass, npm pack shows new d.ts, devDeps/deps unchanged, README is followable).
+
+### Migration notes
+
+- **Stale README readers:** if you were following the old README's `npm install masonry-layout` instructions on this fork's repo, they were never going to work. Use the new `From source` section.
+- **TypeScript users:** you now get autocomplete via `masonry.d.ts`. Import like `import Masonry, { MasonryOptions } from 'masonry-pretext'` (assuming you've installed via the git URL). If types drift from runtime, file an issue — the d.ts is hand-written and could lag.
+- **Bundler users:** the `exports` field now exists, so Vite/Rollup/webpack 5 will pick `dist/masonry.pkgd.min.js` instead of guessing at the source. If you specifically want the source (for custom build tooling), use `import 'masonry-pretext/source'`.
+- **CI consumers:** the new GitHub Actions workflow validates every PR. Forking + cloning + opening a PR will auto-run the gates.
+- **`dist/` file consumers:** byte-identical to pre-011. No SRI hash regeneration needed.
+
+---
+
 ## v5.0.0-dev.10 — 2026-04-08 — `document.fonts.ready` first-paint gate (§ P.4)
 
 > Tag: `v5.0.0-dev.10` · Improvement: [`010-document-fonts-ready.md`](./improvements/010-document-fonts-ready.md) · **Closes upstream**: [`desandro/masonry#1182`](https://github.com/desandro/masonry/issues/1182)

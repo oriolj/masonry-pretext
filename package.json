@@ -1,8 +1,22 @@
 {
   "name": "masonry-pretext",
-  "version": "5.0.0-dev.10",
+  "version": "5.0.0-dev.11",
   "description": "Cascading grid layout library — modernized fork of masonry-layout with reflow-free text measurement via pretext.",
-  "main": "masonry.js",
+  "main": "./dist/masonry.pkgd.min.js",
+  "module": "./dist/masonry.pkgd.min.js",
+  "types": "./masonry.d.ts",
+  "exports": {
+    ".": {
+      "types": "./masonry.d.ts",
+      "import": "./dist/masonry.pkgd.min.js",
+      "require": "./dist/masonry.pkgd.min.js",
+      "default": "./dist/masonry.pkgd.min.js"
+    },
+    "./source": "./masonry.js",
+    "./unminified": "./dist/masonry.pkgd.js",
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
   "dependencies": {
     "get-size": "^2.0.2",
     "outlayer": "^2.1.0"
@@ -43,6 +57,7 @@
   "homepage": "https://github.com/oriolj/masonry-pretext",
   "files": [
     "dist",
-    "masonry.js"
+    "masonry.js",
+    "masonry.d.ts"
   ]
 }
