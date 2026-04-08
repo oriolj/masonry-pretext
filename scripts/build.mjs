@@ -54,37 +54,53 @@ module.exports = require(${JSON.stringify(path.join(ROOT, 'masonry.js'))});
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// outlayer/item.js modern-browser transform (improvement 004 / roadmap § L.2)
+// Dep-file patches plugin (improvements 004 vendor-prefixes + 005 SSR + 006
+// jQuery removal)
 //
-// Strips the vendor-prefix detection block + every site that uses it from
-// `node_modules/outlayer/item.js`. This is dead code in 2026 — `transition`
-// and `transform` have been unprefixed in every browser since 2014, and the
-// browser support baseline (chrome84/firefox86/safari15/edge84) is well past
-// the point where vendor-prefix variants matter. The deleted code includes:
+// Single plugin that applies build-time string transforms to the bundled
+// dependency files. Each entry covers one file and lists the transforms
+// applied to it. esbuild only allows one onLoad handler per file pattern,
+// so all patches a given file needs live in one entry.
 //
-//   - `var docElemStyle = document.documentElement.style;` (the **first** line
-//     of the file's executable body — this is what blocks SSR `import`s of
-//     the bundled module by accessing `document` at module load. Removing it
-//     is necessary but NOT sufficient for SSR — the bundled IIFE still
-//     accesses `window.jQuery` from outlayer.js elsewhere; see roadmap § 2.2
-//     for the full fix.)
-//   - The `transitionProperty` / `transformProperty` / `vendorProperties` /
-//     `dashedVendorProperties` lookup tables.
-//   - The `onwebkitTransitionEnd` / `onotransitionend` legacy event handlers.
-//   - The `toDashedAll` helper that camelCased `WebkitTransform` to `-webkit-transform`.
-//   - Every consumer site (the `css` method, `enableTransition`,
-//     `ontransitionend`, `proto.remove`).
+// All transforms are exact-string substitutions, NOT regex. If a pattern is
+// not found the build aborts loudly — that guards against silent breakage
+// if a dep is ever updated upstream (none have been since 2018, but defense
+// in depth is cheap).
 //
-// All transformations are exact-string substitutions, NOT regex. If any
-// substitution fails to find its target the build aborts loudly — that
-// guards against silent breakage if `outlayer` is ever updated upstream
-// (which it hasn't been since 2018, but defense in depth is cheap).
+// Concerns currently covered:
+//   - **vendor-prefix deletion (#004, § L.2a):** strip every reference to
+//     `WebkitTransition` / `WebkitTransform` / `vendorProperties` /
+//     `dashedVendorProperties` / `onwebkitTransitionEnd` / `toDashedAll`
+//     from `outlayer/item.js`. transition + transform are unprefixed in
+//     every browser at our chrome84/firefox86/safari15/edge84 baseline.
+//   - **SSR safety (#005, § L.2b):** wrap UMD wrapper IIFE call sites with
+//     `typeof window !== 'undefined' ? window : {}` so the bundle can be
+//     loaded in a Node `vm` context with empty globals. Plus a
+//     `typeof document === 'undefined'` short-circuit at the top of
+//     `fizzy-ui-utils.docReady` (called at module load via
+//     `Outlayer.create('masonry')` → `htmlInit` → `docReady`).
+//   - **jQuery removal (#006, § 2.5):** delete every `if (jQuery) { … }`
+//     branch in `outlayer.js` and `fizzy-ui-utils.js` directly. (An earlier
+//     attempt used `const jQuery = false` + esbuild's minifier DCE; that
+//     left dead `bridget` references in the minified output because esbuild
+//     doesn't constant-propagate across function-property closures. Verified
+//     by `test/visual/no-jquery.mjs`.)
+//
+// `ev-emitter` is already SSR-safe upstream (its source uses
+// `typeof window != 'undefined' ? window : this`) and needs no patching.
+// `masonry.js` is OUR source file and is patched directly — see the
+// matching edit on line ~33 of `masonry.js`.
 // ─────────────────────────────────────────────────────────────────────────────
-const OUTLAYER_ITEM_TRANSFORMS = [
-  // ── 1. Delete the vendor-prefix detection block + module-load DOM access ──
+const DEP_FILE_PATCHES = [
   {
-    description: 'delete vendor-prefix detection block',
-    find: `var docElemStyle = document.documentElement.style;
+    file: /node_modules[\\/]outlayer[\\/]item\.js$/,
+    transforms: [
+      // ── #004 — delete the vendor-prefix detection block + module-load
+      //          DOM access. The `var docElemStyle = document.documentElement.style;`
+      //          line is the first executable line of the file's body.
+      {
+        description: '[#004] delete vendor-prefix detection block',
+        find: `var docElemStyle = document.documentElement.style;
 
 var transitionProperty = typeof docElemStyle.transition == 'string' ?
   'transition' : 'WebkitTransition';
@@ -104,28 +120,24 @@ var vendorProperties = {
   transitionProperty: transitionProperty + 'Property',
   transitionDelay: transitionProperty + 'Delay'
 };`,
-    replace: `// vendor-prefix detection deleted by masonry-pretext #004 (\u00a7 L.2)
+        replace: `// vendor-prefix detection deleted by masonry-pretext #004 (\u00a7 L.2)
 // transition / transform unprefixed in every browser since 2014.
 var transitionEndEvent = 'transitionend';`,
-  },
-
-  // ── 2. Simplify css() — drop vendorProperties lookup ──────────────────────
-  {
-    description: 'simplify proto.css — drop vendorProperties lookup',
-    find: `  for ( var prop in style ) {
+      },
+      {
+        description: '[#004] simplify proto.css — drop vendorProperties lookup',
+        find: `  for ( var prop in style ) {
     // use vendor property if available
     var supportedProp = vendorProperties[ prop ] || prop;
     elemStyle[ supportedProp ] = style[ prop ];
   }`,
-    replace: `  for ( var prop in style ) {
+        replace: `  for ( var prop in style ) {
     elemStyle[ prop ] = style[ prop ];
   }`,
-  },
-
-  // ── 3. Simplify transitionProps — drop toDashedAll helper ─────────────────
-  {
-    description: 'simplify transitionProps — drop toDashedAll helper',
-    find: `// dash before all cap letters, including first for
+      },
+      {
+        description: '[#004] simplify transitionProps — drop toDashedAll helper',
+        find: `// dash before all cap letters, including first for
 // WebkitTransform => -webkit-transform
 function toDashedAll( str ) {
   return str.replace( /([A-Z])/g, function( $1 ) {
@@ -134,13 +146,11 @@ function toDashedAll( str ) {
 }
 
 var transitionProps = 'opacity,' + toDashedAll( transformProperty );`,
-    replace: `var transitionProps = 'opacity,transform';`,
-  },
-
-  // ── 4. Delete the onwebkit / onotransitionend handlers + dashedVendorProps ─
-  {
-    description: 'delete legacy onwebkitTransitionEnd / onotransitionend / dashedVendorProperties',
-    find: `proto.onwebkitTransitionEnd = function( event ) {
+        replace: `var transitionProps = 'opacity,transform';`,
+      },
+      {
+        description: '[#004] delete legacy onwebkitTransitionEnd / onotransitionend / dashedVendorProperties',
+        find: `proto.onwebkitTransitionEnd = function( event ) {
   this.ontransitionend( event );
 };
 
@@ -154,144 +164,46 @@ var dashedVendorProperties = {
 };
 
 `,
-    replace: ``,
-  },
-
-  // ── 5. Simplify ontransitionend property normalization ────────────────────
-  {
-    description: 'simplify ontransitionend — drop dashedVendorProperties lookup',
-    find: `  // get property name of transitioned property, convert to prefix-free
+        replace: ``,
+      },
+      {
+        description: '[#004] simplify ontransitionend — drop dashedVendorProperties lookup',
+        find: `  // get property name of transitioned property, convert to prefix-free
   var propertyName = dashedVendorProperties[ event.propertyName ] || event.propertyName;`,
-    replace: `  var propertyName = event.propertyName;`,
-  },
-
-  // ── 6. Simplify proto.remove — drop transitionProperty truthy check ───────
-  {
-    description: 'simplify proto.remove — drop transitionProperty truthy check',
-    find: `proto.remove = function() {
+        replace: `  var propertyName = event.propertyName;`,
+      },
+      {
+        description: '[#004] simplify proto.remove — drop transitionProperty truthy check',
+        find: `proto.remove = function() {
   // just remove element if no transition support or no transition
   if ( !transitionProperty || !parseFloat( this.layout.options.transitionDuration ) ) {`,
-    replace: `proto.remove = function() {
+        replace: `proto.remove = function() {
   // just remove element if no transition duration
   if ( !parseFloat( this.layout.options.transitionDuration ) ) {`,
+      },
+      {
+        description: '[#005 SSR] outlayer/item.js UMD call site',
+        find: `}( window, function factory( EvEmitter, getSize ) {`,
+        replace: `}( typeof window !== 'undefined' ? window : {}, function factory( EvEmitter, getSize ) {`,
+      },
+    ],
   },
-
-  // ── 7. SSR guard for the UMD call site (improvement 005 / § L.2b) ────────
-  // The IIFE invocation passes \`window\` as a free variable, which throws
-  // ReferenceError when the bundle is loaded in a Node \`vm\` context.
-  // Wrap with a typeof guard so SSR-importing the bundle no longer crashes.
-  // The factory body parameter \`window\` then becomes \`{}\` in Node, and the
-  // \`window.console\` / \`window.jQuery\` reads inside become \`undefined\` —
-  // both of which are handled by existing falsy checks.
-  {
-    description: '[SSR] guard outlayer/item.js UMD call site',
-    find: `}( window, function factory( EvEmitter, getSize ) {`,
-    replace: `}( typeof window !== 'undefined' ? window : {}, function factory( EvEmitter, getSize ) {`,
-  },
-];
-
-const outlayerItemModernPlugin = {
-  name: 'outlayer-item-modern',
-  setup(build) {
-    build.onLoad({ filter: /outlayer[\\/]item\.js$/ }, async (args) => {
-      let src = await readFile(args.path, 'utf8');
-      for (const { description, find, replace } of OUTLAYER_ITEM_TRANSFORMS) {
-        const before = src;
-        src = src.replace(find, replace);
-        if (src === before) {
-          throw new Error(
-            `outlayer-item-modern: pattern not found for "${description}" ` +
-            `in ${args.path}. The outlayer/item.js source may have changed; ` +
-            `re-derive the transform list and update scripts/build.mjs.`,
-          );
-        }
-      }
-      return { contents: src, loader: 'js' };
-    });
-  },
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SSR DOM guard plugin (improvement 005 / roadmap § L.2b)
-//
-// Two classes of patch make the bundled file safe to load in a Node SSR
-// context (Next.js, Nuxt, SvelteKit, etc.):
-//
-//   1. **UMD wrapper guards.** Each dependency's UMD wrapper invokes its
-//      factory with a bare \`window\` reference, which throws ReferenceError
-//      in Node. Wrap with \`typeof window !== 'undefined' ? window : {}\` so
-//      Node gets an empty object instead.
-//
-//   2. **utils.docReady guard.** masonry.js's factory body calls
-//      \`Outlayer.create('masonry')\` at module load. \`Outlayer.create\`
-//      transitively calls \`utils.htmlInit\` → \`utils.docReady\` →
-//      \`document.readyState\`, which throws when document is undefined. Add
-//      a \`typeof document === 'undefined'\` short-circuit to docReady.
-//
-// outlayer/item.js's UMD guard goes through the existing
-// \`outlayerItemPatchPlugin\` (transform #7) — esbuild only allows one
-// onLoad per file pattern, so the two plugins must not overlap.
-//
-// ev-emitter is already SSR-safe (its source uses \`typeof window !=
-// 'undefined' ? window : this\`) and doesn't need patching.
-//
-// masonry.js is OUR source file and is patched directly (not via this
-// plugin) — see the matching edit on line ~33 of masonry.js.
-//
-// Verified by test/visual/ssr-smoke.mjs which loads the bundle in a Node
-// vm context with empty globals.
-// ─────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-// Dep-file patches plugin (improvements 005 SSR + 006 jQuery removal)
-//
-// Single plugin that applies build-time string transforms to the bundled
-// dependency files. Each entry covers one file and lists the transforms
-// applied to it. esbuild only allows one onLoad handler per file pattern,
-// so all the patches a given file needs must live in one entry.
-//
-// Concerns currently covered:
-//   - **SSR safety (#005, § L.2b):** wrap UMD wrapper IIFE call sites with
-//     `typeof window !== 'undefined' ? window : {}` so the bundle can be
-//     loaded in a Node `vm` context with empty globals (verified by
-//     test/visual/ssr-smoke.mjs).
-//   - **docReady guard (#005, § L.2b):** add a `typeof document === 'undefined'`
-//     short-circuit to fizzy-ui-utils.docReady, called at module load via
-//     Outlayer.create('masonry') → htmlInit → docReady.
-//   - **jQuery removal (#006, § 2.5):** replace `var jQuery = window.jQuery`
-//     with `var jQuery = false` in outlayer.js and fizzy-ui-utils.js so
-//     esbuild's minifier DCE-eliminates every `if (jQuery)` branch (the
-//     dispatchEvent jQuery event firing, the destroy `removeData` call, the
-//     Outlayer.create bridget call, the htmlInit `$.data` call). With
-//     jquery-bridget no longer bundled, these branches can never run anyway.
-//
-// outlayer/item.js's transforms live in `outlayerItemModernPlugin` instead
-// (it has 7 transforms covering vendor-prefix deletion + the SSR guard).
-// ev-emitter is already SSR-safe upstream and needs no patching.
-// ─────────────────────────────────────────────────────────────────────────────
-const DEP_FILE_PATCHES = [
   {
     file: /node_modules[\\/]outlayer[\\/]outlayer\.js$/,
     transforms: [
       {
-        description: '[SSR] outlayer/outlayer.js UMD call site',
+        description: '[#005 SSR] outlayer/outlayer.js UMD call site',
         find: `}( window, function factory( window, EvEmitter, getSize, utils, Item ) {`,
         replace: `}( typeof window !== 'undefined' ? window : {}, function factory( window, EvEmitter, getSize, utils, Item ) {`,
       },
-      // ── jQuery removal (#006, § 2.5) — direct branch deletion ──────────────
-      // Could not rely on `var jQuery = false` + esbuild constant folding —
-      // the minifier doesn't propagate the constant across function-property
-      // closures (`Outlayer.create`, `proto.dispatchEvent`, etc.). The fix is
-      // to delete each `if (jQuery) { … }` block explicitly. Each transform
-      // is an exact-string substitution that aborts the build if the pattern
-      // is no longer present.
       {
-        description: '[no-jquery] outlayer.js — delete `var jQuery = window.jQuery;`',
+        description: '[#006 no-jquery] outlayer.js — delete `var jQuery = window.jQuery;`',
         find: `var jQuery = window.jQuery;
 `,
         replace: ``,
       },
       {
-        description: '[no-jquery] outlayer.js — delete constructor `if (jQuery)` block',
+        description: '[#006 no-jquery] outlayer.js — delete constructor `if (jQuery)` block',
         find: `  this.element = queryElement;
   // add jQuery
   if ( jQuery ) {
@@ -302,7 +214,7 @@ const DEP_FILE_PATCHES = [
 `,
       },
       {
-        description: '[no-jquery] outlayer.js — delete dispatchEvent `if (jQuery)` block',
+        description: '[#006 no-jquery] outlayer.js — delete dispatchEvent `if (jQuery)` block',
         find: `  this.emitEvent( type, emitArgs );
 
   if ( jQuery ) {
@@ -323,7 +235,7 @@ const DEP_FILE_PATCHES = [
 };`,
       },
       {
-        description: '[no-jquery] outlayer.js — delete destroy `if (jQuery)` block',
+        description: '[#006 no-jquery] outlayer.js — delete destroy `if (jQuery)` block',
         find: `  delete this.element.outlayerGUID;
   // remove data for jQuery
   if ( jQuery ) {
@@ -335,7 +247,7 @@ const DEP_FILE_PATCHES = [
 };`,
       },
       {
-        description: '[no-jquery] outlayer.js — delete Outlayer.create `if (jQuery && jQuery.bridget)` block',
+        description: '[#006 no-jquery] outlayer.js — delete Outlayer.create `if (jQuery && jQuery.bridget)` block',
         find: `  utils.htmlInit( Layout, namespace );
 
   // -------------------------- jQuery bridge -------------------------- //
@@ -356,7 +268,7 @@ const DEP_FILE_PATCHES = [
     file: /node_modules[\\/]get-size[\\/]get-size\.js$/,
     transforms: [
       {
-        description: '[SSR] get-size/get-size.js UMD call site',
+        description: '[#005 SSR] get-size/get-size.js UMD call site',
         find: `})( window, function factory() {`,
         replace: `})( typeof window !== 'undefined' ? window : {}, function factory() {`,
       },
@@ -366,12 +278,12 @@ const DEP_FILE_PATCHES = [
     file: /node_modules[\\/]fizzy-ui-utils[\\/]utils\.js$/,
     transforms: [
       {
-        description: '[SSR] fizzy-ui-utils/utils.js UMD call site',
+        description: '[#005 SSR] fizzy-ui-utils/utils.js UMD call site',
         find: `}( window, function factory( window, matchesSelector ) {`,
         replace: `}( typeof window !== 'undefined' ? window : {}, function factory( window, matchesSelector ) {`,
       },
       {
-        description: '[SSR] fizzy-ui-utils/utils.js docReady — guard against undefined document',
+        description: '[#005 SSR] fizzy-ui-utils/utils.js docReady — guard against undefined document',
         find: `utils.docReady = function( callback ) {
   var readyState = document.readyState;`,
         replace: `utils.docReady = function( callback ) {
@@ -379,7 +291,7 @@ const DEP_FILE_PATCHES = [
   var readyState = document.readyState;`,
       },
       {
-        description: '[no-jquery] fizzy-ui-utils.js htmlInit — delete `var jQuery = window.jQuery;`',
+        description: '[#006 no-jquery] fizzy-ui-utils.js htmlInit — delete `var jQuery = window.jQuery;`',
         find: `    var dataOptionsAttr = dataAttr + '-options';
     var jQuery = window.jQuery;
 `,
@@ -387,7 +299,7 @@ const DEP_FILE_PATCHES = [
 `,
       },
       {
-        description: '[no-jquery] fizzy-ui-utils.js htmlInit — delete `if (jQuery)` block (the $.data call)',
+        description: '[#006 no-jquery] fizzy-ui-utils.js htmlInit — delete `if (jQuery)` block (the $.data call)',
         find: `      // initialize
       var instance = new WidgetClass( elem, options );
       // make available via $().data('namespace')
@@ -471,33 +383,31 @@ const sharedConfig = {
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
-  plugins: [matchesSelectorShimPlugin, outlayerItemModernPlugin, depFilePatchesPlugin],
+  plugins: [matchesSelectorShimPlugin, depFilePatchesPlugin],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Run two builds: unminified + minified.
+// Run unminified + minified builds in parallel. esbuild's `logLevel: 'info'`
+// already prints warnings inline, so we don't post-process them here.
 // ─────────────────────────────────────────────────────────────────────────────
 await mkdir(DIST, { recursive: true });
 
 const t0 = performance.now();
 
-const unminified = await esbuild.build({
-  ...sharedConfig,
-  outfile: path.join(DIST, 'masonry.pkgd.js'),
-  minify: false,
-});
-
-const minified = await esbuild.build({
-  ...sharedConfig,
-  outfile: path.join(DIST, 'masonry.pkgd.min.js'),
-  minify: true,
-});
+await Promise.all([
+  esbuild.build({
+    ...sharedConfig,
+    outfile: path.join(DIST, 'masonry.pkgd.js'),
+    minify: false,
+  }),
+  esbuild.build({
+    ...sharedConfig,
+    outfile: path.join(DIST, 'masonry.pkgd.min.js'),
+    minify: true,
+  }),
+]);
 
 const elapsed = performance.now() - t0;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Report
-// ─────────────────────────────────────────────────────────────────────────────
 const pkgdSize = (await stat(path.join(DIST, 'masonry.pkgd.js'))).size;
 const minSize = (await stat(path.join(DIST, 'masonry.pkgd.min.js'))).size;
 
@@ -505,11 +415,3 @@ console.log('');
 console.log(`built in ${elapsed.toFixed(1)}ms`);
 console.log(`  dist/masonry.pkgd.js      ${pkgdSize.toString().padStart(7)} B`);
 console.log(`  dist/masonry.pkgd.min.js  ${minSize.toString().padStart(7)} B`);
-
-if (unminified.warnings.length || minified.warnings.length) {
-  console.log('');
-  console.log('warnings:');
-  for (const w of [...unminified.warnings, ...minified.warnings]) {
-    console.log(`  ${w.text}`);
-  }
-}

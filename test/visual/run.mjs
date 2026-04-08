@@ -2,10 +2,10 @@
 // test/visual/run.mjs — masonry-pretext visual regression suite.
 //
 // Custom runner instead of `playwright test` because the upstream test
-// runner produces no output in this sandbox (open issue, not yet diagnosed).
-// The chromium API itself works fine — see test/visual/smoke.mjs — so this
-// runner drives chromium directly: launch once, loop over fixtures, assert
-// hardcoded positions for each, take a screenshot, diff against baseline.
+// runner produces no output in this sandbox (cause not yet diagnosed). The
+// chromium API itself works fine, so this runner drives it directly: launch
+// once, loop over fixtures, assert hardcoded positions for each, take a
+// screenshot, diff against baseline.
 //
 // Usage:
 //   node test/visual/run.mjs                # run, fail on diffs
