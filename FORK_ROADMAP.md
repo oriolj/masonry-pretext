@@ -807,6 +807,302 @@ For each work item from the order of operations:
 
 ---
 
+# Post-#010 review (2026-04-08)
+
+After improvement #010 landed, **four** parallel reviews — a self-audit with fresh eyes plus three independent external agents — converged on roughly the same architectural priorities but disagreed on emphasis and surfaced two important *new* findings that none of the prior reviews caught. This section captures the merged findings, the previously-invisible gaps, the headline disagreement that needed source-level clarification, and re-ranks priorities.
+
+The four reviews:
+
+| Reviewer | Focus | Caught | Missed |
+|---|---|---|---|
+| **Self-audit (post-#010)** | Bundle composition + upstream issue tracker | Tier-A through Tier-F size wins; the `#1006` percentage-width issue (top by reactions); test coverage gaps | The Tier 0 packaging/README/CI/harness gaps; the allocation-per-item-per-layout in `_getColGroupY`; the WeakMap registry opportunity |
+| **External agent #1** (packaging-focused) | Packaging metadata, contributor experience, README freshness | All four Tier 0 gaps; verified `npm test` failed on Chromium launch in their sandbox | Specific A-F size wins; allocation/registry opportunities |
+| **External agent #2** (high-level architecture) | "Big wins" list | ResizeObserver, transform positioning, EvEmitter→EventTarget, WAAPI, slim Outlayer, math fix — all confirmed | The Tier 0 gaps; **made one factually incorrect claim about batch read/write — see "Disagreements" below**; allocation/registry opportunities |
+| **External agent #3** (source-level audit, ignored the roadmap) | Direct source review, ranked by structural payoff | Slim Outlayer (#1) + transition state machine deletion (#2) + **two genuinely new findings** (allocation-free column search, WeakMap-based item registry) + tiered confirmation of items E, T0.1, T0.2; argued for an engine/adapter split (item P below) | Test coverage gaps for the items it proposed deleting |
+
+The merge of all four is the priority order in the rest of this section.
+
+## Disagreement: is "batch read/write" actually a big win?
+
+The architecture-focused review claimed batch read/write was the "single biggest technical win," asserting that masonry currently "interleaves DOM reads and writes, causing O(N) forced reflows for N items," and that batching would be "orders of magnitude faster on large grids."
+
+**This is incorrect.** Masonry already does batched read/write. Source evidence:
+
+`outlayer.js:_layoutItems` runs the read phase entirely first (calls `_getItemLayoutPosition` for *every* item, building a position queue) before invoking `_processLayoutQueue` which then runs the write phase (calls `_positionItem` for every item, applying styles). The reads and writes are not interleaved.
+
+Inside `_getItemLayoutPosition` (in `masonry.js`), each item's `getSize()` reads `getComputedStyle(element)` and `element.offsetWidth` / `offsetHeight`. The **first** of these forces a synchronous reflow if any pending DOM mutations exist; **subsequent reads in the same batch return cached values** because the layout is now clean. So the cost of `getSize()` across N items is approximately one reflow + N cheap reads, not N reflows.
+
+This is exactly what improvement #009's pretext bench measured. From `improvements/009-pretext-integration.md`:
+
+> Consistently ~20-25% faster initial layout across grid sizes [from skipping the DOM measurement path entirely via `pretextify`]. The savings are smaller than the "5-10×" mental model you might assume from "skip per-item reflows" because **Masonry already does batched read/write**. The first `getSize()` flushes layout, subsequent reads return cached values.
+
+**The empirical ceiling for "skip DOM measurement on large grids" is about 1.2-1.3× faster initial layout, not orders of magnitude.** That ceiling has already been measured and (in the pretext fast path) reached. The remaining 75-80 % of layout time is column-packing arithmetic + DOM writes, neither of which "batch read/write" affects.
+
+**What that means for the roadmap:**
+
+- The original roadmap's § 1.2 ("Batch read/write layout pass") is **mostly already done** by upstream's existing structure. Removing it from the active priority list and noting it as already-implemented.
+- The big perf wins still on the table are **structural**, not loop-restructuring:
+  - Skipping DOM measurement entirely on opted-in items via `pretextify` (§ 1.1) — **DONE in #009**, measured 1.2-1.3×
+  - Eliminating relayout-triggering events via `ResizeObserver` (§ P.1) — pending, the next big UX win
+  - Moving positioning to GPU compositor via `transform: translate3d` (§ 1.3) — pending, but only affects transitions during relayout, not initial layout (subpixel rendering on layout thrash) — has to be benchmarked, likely modest
+  - Web Animations API replacing the `_transn` state machine (§ P.5) — code-cleanup more than perf
+
+The "single biggest technical win" framing in the architecture review is wrong because the win it's pointing at doesn't exist as a discoverable improvement — it's already done. The actual remaining wins are listed in the size + UX tables below.
+
+After improvement #010 landed, **the original roadmap focused on size/perf/UX of the runtime library and under-weighted packaging, contributor experience, and the most-requested upstream issue**. This section captures the merged findings, the previously-invisible gaps, and re-ranks priorities.
+
+## Foundation gaps (Tier 0 — discovered late, do first)
+
+Four real issues, all small but high-leverage. None of them were on the original roadmap explicitly, or they were ranked too low to land before the deletion sweep.
+
+### Gap T0.1 — Stale README (HIGH urgency, ~30 min effort)
+
+The README's `Install`, `CDN`, `Package managers`, and `Initialize` sections still document the **upstream library**, not the fork:
+
+- `npm install masonry-layout --save` — wrong package name (we renamed to `masonry-pretext` in #001)
+- `bower install masonry-layout` — Bower is deprecated AND wrong name
+- `https://unpkg.com/masonry-layout@4/...` — wrong package, wrong version, points at upstream's frozen build
+- `$('.grid').masonry({...})` — **jQuery removed in #006**, this snippet doesn't work at all in the fork
+- "Masonry has been actively maintained for 8 years" — misleading for a fork of a dormant project
+
+**A new user following the README literally cannot install or use masonry-pretext.** Each subsequent improvement that changed user-facing behavior (jQuery removal, pretextify, fonts.ready) should have prompted a README check. None did. **This is the highest-leverage fix on the entire roadmap right now** — zero LOC of source code, ~30 minutes of editing, prevents a class of "how do I use this?" support burden.
+
+### Gap T0.2 — `package.json` packaging metadata (HIGH urgency)
+
+Currently has only `"main": "masonry.js"`. Missing:
+
+- **`"exports"` field** — modern bundlers (Vite, Rollup, esbuild, webpack 5) consult this to find the right entry per consumer style (`import` vs `require` vs `default`)
+- **`"module"` field** — fallback for `"exports"`-unaware bundlers
+- **`"types"` field** — TypeScript users get no autocomplete
+
+After #002 we have a working esbuild build, but the package metadata doesn't *advertise* the modern artifacts to bundlers. Users still get whatever the bundler's heuristic picks (often the unminified IIFE), even when their bundler could tree-shake an ESM input. This is § 2.2 of the original roadmap which never landed because it was sequenced as "step 8 in the order of operations" — wrong order, should have been Tier 0.
+
+The minimum viable Tier 0 fix is the metadata change pointing at the existing dist files. The full § 2.2 scope (shipping a separate ESM build alongside the IIFE) is a follow-up.
+
+### Gap T0.3 — No CI workflow (HIGH urgency)
+
+`.github/` contains only `contributing.md` + `issue_template.md`. **There is no GitHub Actions workflow.** The "every commit must pass `make test`" rule from § Methodology lives only in the maintainer's local environment. A contributor PR cannot be auto-validated, and there's no proof the gate passes on a fresh clone.
+
+`make test` already exists, has clean exit codes, and is fast (~14 ms build + ~5 s test). The fix is a ~30-line `.github/workflows/test.yml` that runs `make ci` on `push` + `pull_request`. This is § 3.2's CI sub-item which was assumed but never implemented.
+
+### Gap T0.4 — Test harness brittleness (HIGH urgency)
+
+`test/visual/_harness.mjs` launches chromium with `chromium.launch({ headless: true })` — no extra flags. Works in local Linux dev environments but **crashes in many sandboxed/container environments** (verified by the external reviewer whose `npm test` failed on Chromium launch in their sandbox; reproduces in unprivileged docker containers and several CI runners).
+
+Standard hardening flags:
+
+```js
+chromium.launch({
+  headless: true,
+  args: [
+    '--no-sandbox',                  // unprivileged containers
+    '--disable-dev-shm-usage',       // small /dev/shm in CI containers
+    '--disable-gpu',                 // headless doesn't need it
+  ],
+})
+```
+
+Fix is 5 lines in `_harness.mjs`. Without it the test gate is maintainer-machine-specific, which is the maintenance risk § 3.2 was trying to remove. **Must land before T0.3 (CI) or CI will fail on the first run.**
+
+## Newly-discovered findings (review #4)
+
+The fourth review surfaced four items that none of the previous three caught. Two are perf wins, one is an architectural cleanup, one is a refactoring enabler. All verified against the actual source.
+
+### Item M — Allocation-free column-search hot path (NEW perf win)
+
+`masonry.js:_getColGroupY` allocates a fresh array per call via `this.colYs.slice(col, col + colSpan)`, then calls `Math.max.apply(Math, groupColYs)` against it. For a multi-column item, `_getTopColGroup` calls `_getColGroupY` `groupCount = this.cols + 1 - colSpan` times. On a 500-item grid where 20 % of items are multi-column with `colSpan: 2` in a 4-column grid, that's `~100 items × 3 calls = 300 array allocations + 300 spread-Math.max calls per layout`. Real garbage collection pressure on the layout hot path.
+
+The fix is a direct loop:
+
+```js
+proto._getColGroupY = function( col, colSpan ) {
+  if ( colSpan < 2 ) return this.colYs[ col ];
+  var max = this.colYs[ col ];
+  for ( var i = 1; i < colSpan; i++ ) {
+    if ( this.colYs[ col + i ] > max ) max = this.colYs[ col + i ];
+  }
+  return max;
+};
+```
+
+Allocation-free, ~10 LOC, behavior-preserving. **Real micro perf win on grids with multi-column items.** Probably small (a few hundred ns per layout) but it's free, no breaking change, zero size cost (the body is shorter), and it removes a GC-pressure source from a hot path.
+
+**Verification path:** existing 6 visual fixtures cover multi-column items (`fit-width.html`'s `w2`/`w3` classes); they should produce identical positions. Bench gain would need a new microbench (similar shape to `bench-pretext.mjs`) but with multi-column items dominant. Probably worth ~5-10 % on layout time for grids with many multi-column items.
+
+### Item N — WeakMap-keyed item registry (cleanup + small perf)
+
+`Outlayer.prototype.getItem(elem)` linearly scans `this.items[]` to find the `Item` for a given element. `getItems(elems)` calls `getItem` for each input, making it O(N²) in `M × N` where M is the input length. The same pattern is used by `unignore`, `remove`, `unstamp`.
+
+Worse: `Outlayer.data(elem)` looks up the masonry **instance** from an element via the `outlayerGUID` expando + a global `instances[]` registry:
+
+```js
+this.element.outlayerGUID = id; // expando — sets a custom property on the DOM node
+instances[ id ] = this;          // global registry indexed by GUID
+```
+
+The expando is a 2014-era pattern. It pollutes the DOM element with a custom property and creates a memory leak risk if the element is removed without `destroy()` being called (the `instances[id]` keeps the masonry instance alive even if the element is gone). The SSR alive-check added in #005 (`if (self.element.outlayerGUID)`) leans on this pattern too.
+
+**The fix:**
+
+- Per-instance: `WeakMap<Element, Item>` for `getItem`/`getItems`/`unignore`/`unstamp` lookups. O(1) per call. Auto-GC when the element is removed.
+- Global: `WeakMap<Element, Outlayer>` replacing the `outlayerGUID` expando + `instances[id]` registry. Same auto-GC behavior. The SSR alive-check becomes `if (instanceMap.has(self.element))`.
+
+Net: deletes ~30 LOC of registry plumbing, eliminates an expando, makes a class of memory leaks impossible, and makes the lookups O(1).
+
+**Verification:** existing fixtures don't exercise `getItem`/`getItems`/`Outlayer.data` directly. Manual verification: SSR smoke test would fail loudly if the alive-check broke. Worth adding a small fixture that calls `msnry.getItem(elem)` and asserts the right Item is returned, before refactoring.
+
+### Item O — Masonry-specific `getSize` (size + perf win)
+
+Even after improvement #007 stripped the IE11/Firefox<29 box-sizing detection from `node_modules/get-size/get-size.js`, the function still reads **12 padding/margin/border properties** per call (`paddingLeft`, `paddingRight`, … through `borderBottomWidth`) plus `getComputedStyle(elem)` plus `offsetWidth`/`offsetHeight`. Used to construct a full box-model size object: `{width, height, innerWidth, innerHeight, outerWidth, outerHeight, paddingLeft, …}`.
+
+Masonry only reads two fields: `outerWidth` and `outerHeight` (verified by grep over `masonry.js` + `node_modules/outlayer/{outlayer,item}.js`). The other 10+ fields are **computed for every measurement and never read.**
+
+A masonry-specific `getSize(elem)` could be:
+
+```js
+function getSize( elem ) {
+  var style = getComputedStyle( elem );
+  if ( !style || style.display === 'none' ) return { outerWidth: 0, outerHeight: 0 };
+  var marginX = parseFloat(style.marginLeft) + parseFloat(style.marginRight) || 0;
+  var marginY = parseFloat(style.marginTop) + parseFloat(style.marginBottom) || 0;
+  return {
+    outerWidth: elem.offsetWidth + marginX,
+    outerHeight: elem.offsetHeight + marginY,
+  };
+}
+```
+
+~10 LOC vs the current ~80 LOC. **Real bundle size win** (~300-500 B raw / ~100-200 B gz on `dist/masonry.pkgd.min.js`) and **real per-item perf win** (4 style reads vs 14, fewer parseFloat calls). The container size measurement (which IS used for `paddingLeft`/`paddingRight` etc.) would still need a full path — ship two functions, `getItemSize` and `getContainerSize`, with the latter being the legacy form.
+
+This intersects with item E (delete `Outlayer.create` factory) — both want to slim the Outlayer/get-size tree without fully vendoring it. Could land independently or as part of the larger § 2.4.
+
+### Item P — Engine/adapter separation (architectural enabler)
+
+`masonry.js:_getItemLayoutPosition` interleaves three concerns:
+
+1. **DOM measurement input**: `item.getSize()` reads from the DOM (or, in #009, from the `pretextify` callback)
+2. **Pure placement math**: `_getTopColPosition` / `_getHorizontalColPosition` compute `{col, y}` from the item size + the `colYs` array
+3. **State mutation**: updates `colYs[i]` for the spanned columns
+
+The fourth review proposes splitting these:
+
+- A pure `placeItem(size, colYs, options) → {col, y, newColYs}` function — no DOM, no `this`, fully testable in isolation, SSR-safe, theoretically benchable in pure JS without Playwright.
+- A small DOM adapter that calls `placeItem` with measured/pretextified sizes and mutates `colYs`.
+
+**The win is not bytes** — refactoring without removal doesn't shrink bundles much. **The win is enabling future work**:
+
+- Easier benchmarking (the pure function can be timed in Node without chromium)
+- Easier testing (no Playwright fixtures needed for layout math correctness)
+- Future Web Worker offload (the pure function can run in a worker, only the DOM adapter touches the main thread)
+- Cleaner SSR dry runs (the pure function can compute placements server-side from measured heights)
+
+This is a **refactoring** rather than a feature; it should land *before* item L (WAAPI transitions) and #14 (MutationObserver) so those changes can use the cleaner shape.
+
+### Updated cumulative ceiling
+
+Adding items M+N+O+P to the existing A-F + G-L list:
+
+| Tier | Items | Combined gz savings | Perf delta | Architectural value |
+|---|---|---:|---|---|
+| **Size only** (deletions A-F, M, O) | A, B, C, D, E, F, M, O | **~1,150-1,500 B** | small (M) | low |
+| **UX features** (G, H, K) | percentage-width math, ResizeObserver, MutationObserver | +~150 B (cost) | **closes 8+ upstream issues**, eliminates manual reload | high |
+| **Architectural** (N, P, § 2.4) | WeakMap registry, engine/adapter split, slim Outlayer vendor | ~50-100 B + enablement | small | **highest** |
+
+The deletion ceiling alone now puts the bundle around **5,500-5,800 B gz** vs upstream's 7,367 — a **~21-25 % reduction**. With items G/H/K added on top, the size delta shifts to ~22-26 % (the cost of those features is paid once and they're features, not regressions).
+
+## Big size wins still on the table
+
+Cross-checked between the self-audit and the external agent's audit. Together: **~950-1,270 B gz of remaining size wins**, ~14-18 % on top of the current −5.57 % delta vs upstream. Combined this would put the fork at roughly **−18 % to −22 % gzipped vs upstream-frozen v4.2.2**.
+
+Ranked by gz savings, biggest first:
+
+| # | Item | Min gz savings | Risk | Closes upstream |
+|---|---|---:|---|---|
+| **A** | **Delete the entire hide/reveal animation system** in `outlayer.js` + `Item.js` (`proto.reveal/hide/_emitCompleteOnItems` + `Item`'s `reveal/hide/onRevealTransitionEnd/onHideTransitionEnd/getHideRevealTransitionEndProperty/remove` + `defaults.hiddenStyle/visibleStyle`). `appended()`/`prepended()` keep working but lose their fade-in animation. | **~450-550 B** | **Med (breaking)** — third-party plugins (infinite scroll, isotope-style add-ons) calling `msnry.appended(elem)` and expecting fade-in lose the animation. Layout still correct. | nothing directly |
+| **B** | Delete the stagger machinery (`updateStagger`, `_positionItem` stagger arg, `Item.stagger`, `getMilliseconds`, `msUnits`) | ~140-180 B | Low — `options.stagger` never set in any fixture/test | nothing |
+| **C** | Replace `Object.create(EvEmitter.prototype)` + `utils.extend(proto, EvEmitter.prototype)` with ES `class extends` for both `Outlayer` and `Item`. Modern minifiers compress `class` syntax meaningfully better than the manual prototype dance. | ~120-200 B | Med — pervasive refactor; touches the entire surface | nothing |
+| **D** | Inline EvEmitter, drop `once()` + `allOff()` + `_onceEvents` plumbing. After **A** lands, `once()` has zero callers. `allOff()` already has zero callers. | ~100-140 B | Low (after **A**) | nothing |
+| **E** | Delete `Outlayer.create()` factory + `htmlInit` auto-init (the `<div data-masonry='{...}'>` discovery). `Outlayer.create` builds a runtime subclass per namespace + does `subclass(Item)` (Masonry never overrides it — pure waste). | ~80-110 B | Med — removes `data-masonry` auto-init for users relying on it | **closes desandro/masonry#1104** ("Version without auto HTML initialize") |
+| **F** | Inline single-call helpers + dedupe poorly-compressing strings. Specifics: `dispatchEvent` (one caller after **A**) → inline; cache `_getOption('originLeft'/'originTop')` once per method instead of 4× in `Item.{getPosition,layoutPosition,getTranslate}`; the `'transitionProperty'`/`'transitionDuration'`/`'transitionDelay'` literals appear ~6× and don't dedupe well in gz. | ~60-90 B | Low — pure refactor | nothing |
+
+**Cumulative ceiling if all six land:** ~950-1,270 B gz savings → bundle gz drops from 6,957 → ~5,700-6,000 B, putting the fork at **−18 % to −22 % gzipped vs upstream**.
+
+Rejected as too small or too risky:
+
+- `Array.prototype.slice.call → Array.from` in `utils.makeArray`: ~15 B min, not worth the diff
+- `for (var i...)` → `for...of`: minifier already compresses tightly, ~zero net
+- `compatOptions` (legacy `isFitWidth`/`isOrigin*` aliases): **load-bearing**, the upstream qunit tests in `test/unit/` (kept for reference) actively use the legacy names
+- `_isLayoutInited` flag and "first layout is instant" logic: visible behavior, removing it breaks the no-animation-on-init contract
+- `instances` global registry + `outlayerGUID`: ~30 B but used by the SSR alive-check in `_create` (#005)
+
+## Big UX wins still on the table
+
+| # | Item | Closes upstream | Effort |
+|---|---|---|---|
+| **G** | **§ P.1 math fix for `#1006`** — top open upstream issue with **53 reactions** (more than the next 5 issues combined). When `columnWidth` is given as a percent and `gutter` is set, the percent resolves against container width *before* gutter is subtracted, leaving a trailing margin. Reverse-derive cols from the percent literal so `cols × columnWidth + (cols-1) × gutter === containerWidth`. | **`desandro/masonry#1006`** "Percentage width does not work well with gutter" | Low — pure math change in `measureColumns()` |
+| **H** | **§ P.1b per-item ResizeObserver** for image overlap. Auto-relayout when items resize (e.g., images finish loading). | **`desandro/masonry#1147`** + 7 duplicates (the dominant complaint category in the upstream tracker) | Med — the headline UX fix; needs a new fixture with delayed-loading content |
+| **I** | § 811 — column-pick strategy callback (don't always pick shortest column) | `#811` (10 reactions) | Low — same shape as `pretextify` — a `columnPicker` option callback |
+| **J** | § 1129 — respect parent max-width with `fitWidth` | `#1129` (3 reactions) | Low — niche but easy |
+| **K** | **§ P.2 MutationObserver auto-relayout** — removes the "forgot to call `.reloadItems()`/`.appended()` after appending" footgun, the dominant non-image upstream complaint cluster | none directly but covers a class of "masonry not updating" bugs | Med — needs a new fixture |
+| **L** | **§ P.5 WAAPI replacing the transition state machine** in `outlayer/item.js`. Biggest single architectural cleanup (~120 LOC of `_transitionTo`/`enableTransition`/`disableTransition`/`_transn` state). | none directly | Med-High — risky without a non-zero-`transitionDuration` fixture (current fixtures all use `0`) |
+
+## Test coverage gaps (block items A, B, E, L)
+
+Before any of items **A, B, E, L** can ship safely, the existing fixtures need to be augmented or the breakage documented. None of the current 6 visual fixtures cover:
+
+- **Fade-in animation** on `appended()`/`prepended()`/`hide()`/`reveal()` — required to safely delete the hide/reveal system (item **A**).
+- **`<div data-masonry>` auto-init** via `htmlInit` — required to safely delete `Outlayer.create` factory (item **E**).
+- **`options.stagger` behavior** — required to safely delete the stagger machinery (item **B**).
+- **Non-zero `transitionDuration` end state** — required to safely rewrite the transition state machine (§ P.5 / item **L**). All current fixtures use `transitionDuration: 0`.
+
+For each of A/B/E/L, the path is: either **add the fixture before deleting** (preserves the test gate) OR **document the breakage in a v5.0.0-rc release note** and accept the loss as a major-version change.
+
+## Re-ranked sequencing (synthesizes all four reviews)
+
+The recommended order from here:
+
+1. **#011 — README rewrite + Tier 0 packaging fixes (combined commit).**
+   - Rewrite README Install / CDN / Package managers / Initialize sections to reflect masonry-pretext (no jQuery, fork URL, vanilla API only)
+   - Add `exports` / `module` / `types` to `package.json` (T0.2)
+   - Add `.github/workflows/test.yml` running `make ci` on push + PR (T0.3)
+   - Harden chromium launch flags in `_harness.mjs` (T0.4) — must precede CI or CI fails on first run
+   - **No source code change**, ~1 hour, prevents user confusion + adds CI gate. Highest leverage for the smallest commit. **All four reviews independently flag at least one of these as a high-priority gap.**
+2. **#012 — Item H (§ P.1b per-item ResizeObserver).** Closes the dominant upstream complaint category (8+ duplicate image-overlap issues). Headline UX feature. Needs a new fixture with delayed-load content. **All four reviews rank this as high-priority.**
+3. **#013 — Item G (§ P.1 math fix for `#1006`).** Closes the top open upstream issue (53 reactions, more than the next 5 combined). Small math change in `measureColumns()`.
+4. **#014 — Item K (§ P.2 MutationObserver auto-relayout).** Removes the "forgot to reload" footgun.
+5. **#015 — Items M + N + O (allocation-free column search + WeakMap registry + masonry-specific getSize).** All three are pure cleanups with no breaking change, no API surface change, real-but-small perf wins. ~150-300 B gz savings combined. Land them before the big deletions because they're the lowest-risk improvements still available.
+6. **#016 — Items A + B + D + F (delete hide/reveal/stagger + inline EvEmitter + dedupe).** Combined ~750-950 B gz. Breaking change for plugin authors. **Cut v5.0.0-rc.1 immediately after.**
+7. **#017 — Items C + E (`class extends` + delete `Outlayer.create`/`htmlInit`).** Architectural cleanup, ~200-310 B gz, breaking change for `data-masonry` users.
+8. **#018 — Item P (engine/adapter separation refactoring).** No bytes saved but unlocks easier benchmarking, SSR dry runs, future worker offloading. Enables item L (WAAPI) to land cleanly.
+9. **#019+ — TypeScript types**, item L (WAAPI), § 2.4 (slim Outlayer vendor). Post-rc work toward v5.0.0 final.
+
+After #011-017 land, `dist/masonry.pkgd.min.js` should be roughly **5,400-5,700 B gzipped** vs upstream's 7,367 — about **−22 % to −27 % vs upstream**. Enough delta to call v5.0.0-rc.1 and stop the dev tag sequence.
+
+## What the original deep research missed
+
+The "Deep research findings" section above was thorough on the runtime library code but under-weighted four things, all visible only after #010 landed:
+
+1. **Packaging metadata as a Tier 0 item.** § 2.2 (ESM exports) was listed but ranked low ("step 8 in the order of operations"). It should have been Tier 0 because the build pipeline modernization (#002) didn't help users until `package.json` exports field actually pointed at the modern artifacts. The user experience is "I installed masonry-pretext and Vite still gives me the IIFE" — exactly the bundler-friendliness story #002 was supposed to address.
+2. **CI as an actual gate.** § 3.2 mentioned CI in passing ("Wire up `npm test`. Add CI.") but the methodology wrote "every commit must pass `make test`" without ever implementing the automation. The local make rule isn't a gate; it's a convention that breaks as soon as a contributor PR comes in.
+3. **README freshness.** Wasn't on the roadmap *at all*. The "fork direction" commit (`d2b80d1`) added the "Key improvements vs upstream" table but left the legacy upstream Install / Initialize sections intact. Each subsequent improvement that changed user-facing behavior should have prompted a README check.
+4. **Test portability.** The visual gate was added in #001 but always ran on the maintainer's local Linux box. The brittle chromium launch became visible only when an external reviewer tried to run it.
+
+## Methodology updates (effective immediately)
+
+Add to the change loop in § Methodology:
+
+- **Before each improvement**, run a **Tier 0 health check**:
+  1. Does the README still match what users will get? Specifically the Install / CDN / Package managers / Initialize sections.
+  2. Does `package.json` still match the bundler ergonomics the build produces? (`exports` / `module` / `types` fields point at real files?)
+  3. Does CI pass on at least one external clone of the repo? (`gh run view` or equivalent.)
+  4. Does `make test` pass on a sandboxed/container chromium with the hardened launch flags? (Periodically test in a fresh docker container.)
+- **After each user-facing change**, immediately update README's affected sections **in the same commit**. Don't defer to a later "docs cleanup" pass.
+- **Run a Tier 0 audit periodically** — every 5 improvements or so — even when nothing seems wrong. The 4 gaps in this review accumulated silently between #001 and #010 with nothing catching them.
+
+These four checks would have caught every gap this review found.
+
+---
+
 # Progress
 
 Status of every step in the order of operations. Each row links to the per-change record in [`improvements/`](./improvements/) once it lands.
@@ -835,15 +1131,37 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | 6 | Batch read/write layout pass | § 1.2 | ⬜ | | biggest perf win without API change |
 | 7 | Pretext integration (opt-in callback) | § 1.1 | ✅ `v5.0.0-dev.9` | [009-pretext-integration.md](./improvements/009-pretext-integration.md) | **headline feature**; +22 B gz cost; **measured 1.2-1.3× faster layout (17-24% reduction)** across 100-2000 item grids via new bench-pretext.mjs |
 | 8a | `document.fonts.ready` first-paint gate | § P.4 | ✅ `v5.0.0-dev.10` | [010-document-fonts-ready.md](./improvements/010-document-fonts-ready.md) | **closes desandro/masonry#1182**; +63 B gz cost; new fonts-ready discriminating fixture |
-| 8b | MutationObserver auto-layout (opt-in) | § P.2 | ⬜ | | kills the "forgot to call reload" footgun |
-| 9 | Position via `transform: translate3d` | § 1.3 | ⬜ | | compositor-only, no layout invalidation |
-| 10a | WAAPI replaces transition state machine | § P.5 | ⬜ | | deletes ~120 LOC of Outlayer/Item |
-| 10b | EventTarget replaces EvEmitter | § P.3 | ⬜ | | deletes EvEmitter dep entirely |
-| 10c | AbortController for cleanup | § P.8 | ⬜ | | one-call destroy |
-| 11 | Fix percentage width + gutter math | § P.1 (math) | ⬜ | | **closes desandro/masonry#1006 (53 reactions)** |
-| 12 | Vendor slimmed Outlayer core | § 2.4 | ⬜ | | last, biggest scope, bundle target ~6 KB min |
+| **— TIER 0 — discovered post-#010, all 4 reviews flagged at least one — — — — — — — — — — — — — — — — — — — — — —** |
+| **T0.1** | **README rewrite — drop stale upstream Install/Initialize sections** | § Post-#010 | ⬜ | | **HIGH urgency**: snippets in README.md don't work for masonry-pretext (jQuery removed in #006, package renamed in #001) |
+| **T0.2** | **`package.json` `exports` / `module` / `types` fields** | § 2.2 (re-prioritized) | ⬜ | | **HIGH urgency**: bundlers can't find modern entry points |
+| **T0.3** | **GitHub Actions CI** running `make ci` on push + PR | § 3.2 (CI sub-item) | ⬜ | | **HIGH urgency**: no automation gate currently exists |
+| **T0.4** | **Harden chromium launch flags** in `_harness.mjs` (`--no-sandbox`, `--disable-dev-shm-usage`) | § Post-#010 | ⬜ | | **HIGH urgency**: must precede T0.3 or CI fails on first run |
+| **— Big size wins (post-#010 review) — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — —** |
+| A | Delete hide/reveal animation system + Item.{hide,reveal,...} + defaults.hiddenStyle/visibleStyle | § Post-#010 | ⬜ | | **~450-550 B gz**; breaking for plugin authors expecting fade-in animation |
+| B | Delete stagger machinery (`updateStagger`, `_positionItem` stagger arg, `Item.stagger`, `getMilliseconds`, `msUnits`) | § Post-#010 | ⬜ | | ~140-180 B gz; low risk (`options.stagger` never set) |
+| C | `class extends` modernization for Outlayer + Item (replace `Object.create` + `utils.extend(proto, ...)`) | § Post-#010 | ⬜ | | ~120-200 B gz; pervasive refactor |
+| D | Inline EvEmitter, drop `once()` + `allOff()` + `_onceEvents` plumbing (after A) | § Post-#010 + § P.3 | ⬜ | | ~100-140 B gz |
+| E | Delete `Outlayer.create()` factory + `htmlInit` auto-init | § Post-#010 | ⬜ | | ~80-110 B gz; **closes desandro/masonry#1104**; breaking for `data-masonry` users |
+| F | Inline single-call helpers + dedupe poorly-compressing strings | § Post-#010 | ⬜ | | ~60-90 B gz |
+| **— Newly discovered (review #4) — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — —** |
+| **M** | **Allocation-free `_getColGroupY` hot path** (replace `slice()` + `Math.max.apply` with direct loop) | § Post-#010 (review #4) | ⬜ | | NEW perf win; ~10 LOC, no breaking change, removes per-item GC pressure on multi-col grids |
+| **N** | **WeakMap-keyed item registry** (replace `getItem` linear scan + `outlayerGUID` expando + global `instances[]`) | § Post-#010 (review #4) | ⬜ | | NEW; deletes ~30 LOC of registry plumbing, eliminates an expando, eliminates a memory leak class, makes lookups O(1) |
+| **O** | **Masonry-specific `getSize`** (replace 14-property box-model extraction with 4-property minimal path) | § Post-#010 (review #4) | ⬜ | | NEW; ~300-500 B raw / ~100-200 B gz savings; per-item perf win (4 style reads vs 14) |
+| **P** | **Engine/adapter separation refactor** in `_getItemLayoutPosition` (pure-math `placeItem` + DOM adapter) | § Post-#010 (review #4) | ⬜ | | NEW; no bytes saved but enables benchmarking without Playwright, SSR dry runs, future worker offload |
+| **— High UX wins (post-#010 review) — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — —** |
+| **G** | **Math fix for percentage-width + gutter** | § P.1 (math) | ⬜ | | **closes desandro/masonry#1006 (53 reactions, top open issue)** |
+| **H** | Per-item ResizeObserver for image-overlap | § P.1b | ⬜ | | **closes desandro/masonry#1147 + 7 duplicates** (dominant complaint category) |
+| K | MutationObserver auto-relayout (opt-in) | § P.2 | ⬜ | | removes the "forgot to call reload" footgun |
+| I | Column-pick strategy callback (don't always pick shortest) | § 811 | ⬜ | | closes `#811` (10 reactions) |
+| J | Respect parent max-width with `fitWidth` | § 1129 | ⬜ | | closes `#1129` (3 reactions) |
+| — | Position via `transform: translate3d` | § 1.3 | ⬜ | | needs benchmarking; modest delta on initial layout, possibly larger on transition smoothness |
+| L | WAAPI replaces transition state machine in outlayer/item.js | § P.5 | ⬜ | | needs non-zero-`transitionDuration` fixture; biggest single architectural cleanup |
+| — | AbortController for cleanup | § P.8 | ⬜ | | one-call destroy; small follow-on after EvEmitter→EventTarget |
+| — | Vendor slimmed Outlayer core | § 2.4 | ⬜ | | last, biggest scope, bundle target ~6 KB min |
+| — | TypeScript type definitions | § 2.7 | ⬜ | | DX win; needs `T0.2`'s `types` field to point at it |
 | — | IntersectionObserver virtualization | § P.7 | ⬜ | | post-v5, opt-in for 1000+ item grids |
+| — | ~~Batch read/write layout pass~~ | ~~§ 1.2~~ | ⏸️ already-implemented | | **disproven by #009 bench** — masonry already batches; first reflow flushes, subsequent reads are cached. The pretext fast path's measured 1.2-1.3× speedup is the empirical ceiling. See "Disagreements" in § Post-#010 review. |
 
-**v5.0.0 ships at the end of step 11.** Step 12 + § P.7 are v5.1+.
+**v5.0.0-rc.1 ships at the end of step 7 in the new sequencing** (after the size deletions + the breaking changes). v5.0.0 final follows once items P + L + § 2.4 + TS types land.
 
 When updating this table after a change lands: switch the status column, link the improvement file, and add the headline number to the Notes column (e.g. "−1,234 B min.js gz").
