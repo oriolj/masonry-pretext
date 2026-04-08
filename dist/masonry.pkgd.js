@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.27
+ * Masonry PACKAGED v5.0.0-dev.28
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -534,63 +534,7 @@ var Masonry = (() => {
           this.emitEvent("remove", [this]);
         };
         proto.remove = function() {
-          if (!parseFloat(this.layout.options.transitionDuration)) {
-            this.removeElem();
-            return;
-          }
-          this.once("transitionEnd", function() {
-            this.removeElem();
-          });
-          this.hide();
-        };
-        proto.reveal = function() {
-          delete this.isHidden;
-          this.css({ display: "" });
-          var options = this.layout.options;
-          var onTransitionEnd = {};
-          var transitionEndProperty = this.getHideRevealTransitionEndProperty("visibleStyle");
-          onTransitionEnd[transitionEndProperty] = this.onRevealTransitionEnd;
-          this.transition({
-            from: options.hiddenStyle,
-            to: options.visibleStyle,
-            isCleaning: true,
-            onTransitionEnd
-          });
-        };
-        proto.onRevealTransitionEnd = function() {
-          if (!this.isHidden) {
-            this.emitEvent("reveal");
-          }
-        };
-        proto.getHideRevealTransitionEndProperty = function(styleProperty) {
-          var optionStyle = this.layout.options[styleProperty];
-          if (optionStyle.opacity) {
-            return "opacity";
-          }
-          for (var prop in optionStyle) {
-            return prop;
-          }
-        };
-        proto.hide = function() {
-          this.isHidden = true;
-          this.css({ display: "" });
-          var options = this.layout.options;
-          var onTransitionEnd = {};
-          var transitionEndProperty = this.getHideRevealTransitionEndProperty("hiddenStyle");
-          onTransitionEnd[transitionEndProperty] = this.onHideTransitionEnd;
-          this.transition({
-            from: options.visibleStyle,
-            to: options.hiddenStyle,
-            // keep hidden stuff hidden
-            isCleaning: true,
-            onTransitionEnd
-          });
-        };
-        proto.onHideTransitionEnd = function() {
-          if (this.isHidden) {
-            this.css({ display: "none" });
-            this.emitEvent("hide");
-          }
+          this.removeElem();
         };
         proto.destroy = function() {
           this.css({
@@ -683,15 +627,7 @@ var Masonry = (() => {
           resize: true,
           resizeContainer: true,
           // item options
-          transitionDuration: "0.4s",
-          hiddenStyle: {
-            opacity: 0,
-            transform: "scale(0.001)"
-          },
-          visibleStyle: {
-            opacity: 1,
-            transform: "scale(1)"
-          }
+          transitionDuration: "0.4s"
         };
         var proto = Outlayer.prototype;
         utils.extend(proto, EvEmitter.prototype);
@@ -967,7 +903,6 @@ var Masonry = (() => {
             return;
           }
           this.layoutItems(items, true);
-          this.reveal(items);
         };
         proto.prepended = function(elems) {
           var items = this._itemize(elems);
@@ -979,34 +914,7 @@ var Masonry = (() => {
           this._resetLayout();
           this._manageStamps();
           this.layoutItems(items, true);
-          this.reveal(items);
           this.layoutItems(previousItems);
-        };
-        proto.reveal = function(items) {
-          this._emitCompleteOnItems("reveal", items);
-          if (!items || !items.length) {
-            return;
-          }
-          items.forEach(function(item) {
-            item.reveal();
-          });
-        };
-        proto.hide = function(items) {
-          this._emitCompleteOnItems("hide", items);
-          if (!items || !items.length) {
-            return;
-          }
-          items.forEach(function(item) {
-            item.hide();
-          });
-        };
-        proto.revealItemElements = function(elems) {
-          var items = this.getItems(elems);
-          this.reveal(items);
-        };
-        proto.hideItemElements = function(elems) {
-          var items = this.getItems(elems);
-          this.hide(items);
         };
         proto.getItem = function(elem) {
           for (var i = 0; i < this.items.length; i++) {

@@ -1,6 +1,6 @@
 {
   "name": "masonry-pretext",
-  "version": "5.0.0-dev.27",
+  "version": "5.0.0-dev.28",
   "description": "Cascading grid layout library — modernized fork of masonry-layout with reflow-free text measurement via pretext.",
   "main": "./dist/masonry.cjs",
   "module": "./dist/masonry.mjs",

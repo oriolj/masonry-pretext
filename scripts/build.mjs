@@ -228,6 +228,105 @@ proto.stagger = function( delay ) {
 `,
         replace: ``,
       },
+      // ── #028 — delete Item.hide / Item.reveal + simplify Item.remove ────
+      {
+        description: '[#028] item.js — simplify Item.remove (drop hide() transition path)',
+        find: `proto.remove = function() {
+  // just remove element if no transition duration
+  if ( !parseFloat( this.layout.options.transitionDuration ) ) {
+    this.removeElem();
+    return;
+  }
+
+  // start transition
+  this.once( 'transitionEnd', function() {
+    this.removeElem();
+  });
+  this.hide();
+};`,
+        replace: `proto.remove = function() {
+  this.removeElem();
+};`,
+      },
+      {
+        description: '[#028] item.js — delete proto.reveal + proto.hide + onRevealTransitionEnd + onHideTransitionEnd + getHideRevealTransitionEndProperty',
+        find: `proto.reveal = function() {
+  delete this.isHidden;
+  // remove display: none
+  this.css({ display: '' });
+
+  var options = this.layout.options;
+
+  var onTransitionEnd = {};
+  var transitionEndProperty = this.getHideRevealTransitionEndProperty('visibleStyle');
+  onTransitionEnd[ transitionEndProperty ] = this.onRevealTransitionEnd;
+
+  this.transition({
+    from: options.hiddenStyle,
+    to: options.visibleStyle,
+    isCleaning: true,
+    onTransitionEnd: onTransitionEnd
+  });
+};
+
+proto.onRevealTransitionEnd = function() {
+  // check if still visible
+  // during transition, item may have been hidden
+  if ( !this.isHidden ) {
+    this.emitEvent('reveal');
+  }
+};
+
+/**
+ * get style property use for hide/reveal transition end
+ * @param {String} styleProperty - hiddenStyle/visibleStyle
+ * @returns {String}
+ */
+proto.getHideRevealTransitionEndProperty = function( styleProperty ) {
+  var optionStyle = this.layout.options[ styleProperty ];
+  // use opacity
+  if ( optionStyle.opacity ) {
+    return 'opacity';
+  }
+  // get first property
+  for ( var prop in optionStyle ) {
+    return prop;
+  }
+};
+
+proto.hide = function() {
+  // set flag
+  this.isHidden = true;
+  // remove display: none
+  this.css({ display: '' });
+
+  var options = this.layout.options;
+
+  var onTransitionEnd = {};
+  var transitionEndProperty = this.getHideRevealTransitionEndProperty('hiddenStyle');
+  onTransitionEnd[ transitionEndProperty ] = this.onHideTransitionEnd;
+
+  this.transition({
+    from: options.visibleStyle,
+    to: options.hiddenStyle,
+    // keep hidden stuff hidden
+    isCleaning: true,
+    onTransitionEnd: onTransitionEnd
+  });
+};
+
+proto.onHideTransitionEnd = function() {
+  // check if still hidden
+  // during transition, item may have been un-hidden
+  if ( this.isHidden ) {
+    this.css({ display: 'none' });
+    this.emitEvent('hide');
+  }
+};
+
+`,
+        replace: ``,
+      },
     ],
   },
   {
@@ -525,6 +624,120 @@ var instances = new WeakMap();`,
   elem = utils.getQueryElement( elem );
   return elem && instances.get( elem );
 };`,
+      },
+      // ── #028 — delete hide/reveal animation system (item A) ─────────────
+      // The fade-in/scale-up animation system from upstream's defaults
+      // (`hiddenStyle: { opacity: 0, transform: 'scale(0.001)' }`,
+      // `visibleStyle: { opacity: 1, transform: 'scale(1)' }`) is dead
+      // weight in masonry-pretext: it relies on transitions, which the
+      // SSR preset (#015) forces off, and on stagger, which #024 deleted.
+      // Delete: defaults.hiddenStyle, defaults.visibleStyle, proto.reveal,
+      // proto.hide, proto.revealItemElements, proto.hideItemElements,
+      // the reveal calls in proto.appended and proto.prepended.
+      // **Breaking change for plugin authors expecting fade-in animation.**
+      {
+        description: '[#028] outlayer.js — delete defaults.hiddenStyle + visibleStyle',
+        find: `  // item options
+  transitionDuration: '0.4s',
+  hiddenStyle: {
+    opacity: 0,
+    transform: 'scale(0.001)'
+  },
+  visibleStyle: {
+    opacity: 1,
+    transform: 'scale(1)'
+  }
+};`,
+        replace: `  // item options
+  transitionDuration: '0.4s'
+};`,
+      },
+      {
+        description: '[#028] outlayer.js — drop reveal call from proto.appended',
+        find: `proto.appended = function( elems ) {
+  var items = this.addItems( elems );
+  if ( !items.length ) {
+    return;
+  }
+  // layout and reveal just the new items
+  this.layoutItems( items, true );
+  this.reveal( items );
+};`,
+        replace: `proto.appended = function( elems ) {
+  var items = this.addItems( elems );
+  if ( !items.length ) {
+    return;
+  }
+  this.layoutItems( items, true );
+};`,
+      },
+      {
+        description: '[#028] outlayer.js — drop reveal call from proto.prepended',
+        find: `  // start new layout
+  this._resetLayout();
+  this._manageStamps();
+  // layout new stuff without transition
+  this.layoutItems( items, true );
+  this.reveal( items );
+  // layout previous items
+  this.layoutItems( previousItems );
+};`,
+        replace: `  this._resetLayout();
+  this._manageStamps();
+  this.layoutItems( items, true );
+  this.layoutItems( previousItems );
+};`,
+      },
+      {
+        description: '[#028] outlayer.js — delete proto.reveal + proto.hide + proto.revealItemElements + proto.hideItemElements',
+        find: `/**
+ * reveal a collection of items
+ * @param {Array of Outlayer.Items} items
+ */
+proto.reveal = function( items ) {
+  this._emitCompleteOnItems( 'reveal', items );
+  if ( !items || !items.length ) {
+    return;
+  }
+  items.forEach( function( item ) {
+    item.reveal();
+  });
+};
+
+/**
+ * hide a collection of items
+ * @param {Array of Outlayer.Items} items
+ */
+proto.hide = function( items ) {
+  this._emitCompleteOnItems( 'hide', items );
+  if ( !items || !items.length ) {
+    return;
+  }
+  items.forEach( function( item ) {
+    item.hide();
+  });
+};
+
+/**
+ * reveal item elements
+ * @param {Array}, {Element}, {NodeList} items
+ */
+proto.revealItemElements = function( elems ) {
+  var items = this.getItems( elems );
+  this.reveal( items );
+};
+
+/**
+ * hide item elements
+ * @param {Array}, {Element}, {NodeList} items
+ */
+proto.hideItemElements = function( elems ) {
+  var items = this.getItems( elems );
+  this.hide( items );
+};
+
+`,
+        replace: ``,
       },
       {
         description: '[#024] outlayer.js — delete msUnits + getMilliseconds (only used by updateStagger)',
