@@ -17,6 +17,48 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.3 — 2026-04-08 — Delete matchesSelector polyfill (§ L.1)
+
+> Tag: `v5.0.0-dev.3` · Improvement: [`003-delete-matches-selector-polyfill.md`](./improvements/003-delete-matches-selector-polyfill.md) · Closes upstream: _none directly_
+
+First "delete dead browser-compat code" step. The bundled `desandro-matches-selector` polyfill walked `webkitMatchesSelector` / `mozMatchesSelector` / `msMatchesSelector` / `oMatchesSelector` looking for a usable method on `Element.prototype`. `Element.matches` has been unprefixed in every browser since 2014 and is universally available at the fork's target baseline (Chrome 84 / Firefox 86 / Safari 15 / Edge 84) — the polyfill is dead code.
+
+Replaced via a build-time esbuild plugin that intercepts `require('desandro-matches-selector')` and substitutes the one-liner: `function(elem, selector) { return elem.matches(selector); }`. No source change in `masonry.js`; the dep tree on disk is unchanged; only the bundled output is smaller.
+
+### Removed
+
+- **`desandro-matches-selector` polyfill from the bundled output** (~50 LOC of vendor-prefix walking).
+
+### Numbers
+
+| File | Metric | pre-003 | v5.0.0-dev.3 | Δ |
+|---|---|---:|---:|---:|
+| `dist/masonry.pkgd.js` | raw | 56,540 | **55,543** | **−1.76 %** |
+| `dist/masonry.pkgd.js` | gzip | 10,646 | **10,521** | **−1.17 %** |
+| `dist/masonry.pkgd.js` | brotli | 9,435 | **9,317** | **−1.25 %** |
+| `dist/masonry.pkgd.min.js` | raw | 24,303 | **23,902** | **−1.65 %** |
+| `dist/masonry.pkgd.min.js` | gzip | 7,890 | **7,788** | **−1.29 %** |
+| `dist/masonry.pkgd.min.js` | brotli | 7,136 | **7,040** | **−1.34 %** |
+| Visual regression tests | passing | 4 / 4 | **4 / 4** | unchanged |
+
+### vs upstream-frozen v4.2.2 baseline
+
+| Metric | v4.2.2 | v5.0.0-dev.3 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,103 | **23,902** | **−201 B** |
+| `dist/masonry.pkgd.min.js` gzip | 7,367 | 7,788 | +421 B (post-002 esbuild cost, recovering) |
+| `dist/masonry.pkgd.min.js` brotli | 6,601 | 7,040 | +439 B (recovering) |
+
+**First version of the fork where `dist/masonry.pkgd.min.js` raw bytes are below upstream.** Roughly 20 % of the post-002 gzip regression is now recovered. Improvements 004–006 (delete vendor-prefix detection, delete getSize box-sizing setup, inline fizzy-ui-utils) should close the rest of the gap.
+
+**Predicted vs actual:** all six predictions landed inside their stated bands. First improvement to land strictly inside the predicted bands on every numeric column — a sign the calibration from #001 + #002 is working.
+
+### Migration notes
+
+- **None.** Behavior is unchanged. Browsers older than the target baseline (chrome 84 / firefox 86 / safari 15 / edge 84) would now fall through to a `TypeError` if they tried to load the bundle, but those browsers were already unsupported per `FORK_ROADMAP.md` § Browser support cuts.
+
+---
+
 ## v5.0.0-dev.2 — 2026-04-08 — Working build pipeline (esbuild)
 
 > Tag: `v5.0.0-dev.2` · Improvement: [`002-esbuild-build.md`](./improvements/002-esbuild-build.md) · Closes upstream: _none directly; unblocks every later size improvement_

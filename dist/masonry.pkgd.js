@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.2
+ * Masonry PACKAGED v5.0.0-dev.3
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -223,41 +223,12 @@ var Masonry = (() => {
     }
   });
 
-  // node_modules/desandro-matches-selector/matches-selector.js
-  var require_matches_selector = __commonJS({
-    "node_modules/desandro-matches-selector/matches-selector.js"(exports, module) {
-      (function(window2, factory) {
-        "use strict";
-        if (typeof define == "function" && define.amd) {
-          define(factory);
-        } else if (typeof module == "object" && module.exports) {
-          module.exports = factory();
-        } else {
-          window2.matchesSelector = factory();
-        }
-      })(window, function factory() {
-        "use strict";
-        var matchesMethod = function() {
-          var ElemProto = window.Element.prototype;
-          if (ElemProto.matches) {
-            return "matches";
-          }
-          if (ElemProto.matchesSelector) {
-            return "matchesSelector";
-          }
-          var prefixes = ["webkit", "moz", "ms", "o"];
-          for (var i = 0; i < prefixes.length; i++) {
-            var prefix = prefixes[i];
-            var method = prefix + "MatchesSelector";
-            if (ElemProto[method]) {
-              return method;
-            }
-          }
-        }();
-        return function matchesSelector(elem, selector) {
-          return elem[matchesMethod](selector);
-        };
-      });
+  // matches-selector-shim:matches-selector-shim
+  var require_matches_selector_shim = __commonJS({
+    "matches-selector-shim:matches-selector-shim"(exports, module) {
+      module.exports = function(elem, selector) {
+        return elem.matches(selector);
+      };
     }
   });
 
@@ -274,7 +245,7 @@ var Masonry = (() => {
         } else if (typeof module == "object" && module.exports) {
           module.exports = factory(
             window2,
-            require_matches_selector()
+            require_matches_selector_shim()
           );
         } else {
           window2.fizzyUIUtils = factory(

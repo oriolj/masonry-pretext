@@ -80,6 +80,37 @@ const jqueryStubPlugin = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// matchesSelector shim plugin (improvement 003 / roadmap § L.1)
+//
+// `desandro-matches-selector` is a 50-line polyfill that walks
+// `webkitMatchesSelector` / `mozMatchesSelector` / `msMatchesSelector` /
+// `oMatchesSelector` looking for a usable method on Element.prototype. This
+// is dead code in 2026 — `Element.matches` has been unprefixed in every
+// browser since 2014 (Chrome 34, Firefox 34, Safari 7.1) and is universally
+// available at our target baseline (chrome84 / firefox86 / safari15 /
+// edge84). Replace the entire dep with a one-line shim that calls the
+// native method directly.
+//
+// Why a build-time shim instead of editing node_modules: I can't delete code
+// inside `node_modules/desandro-matches-selector/` without forking the
+// package. The shim is functionally equivalent (same `(elem, selector) =>
+// boolean` signature) and gets bundled in place of the real module.
+// ─────────────────────────────────────────────────────────────────────────────
+const matchesSelectorShimPlugin = {
+  name: 'matches-selector-shim',
+  setup(build) {
+    build.onResolve({ filter: /^desandro-matches-selector$/ }, () => ({
+      path: 'matches-selector-shim',
+      namespace: 'matches-selector-shim',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'matches-selector-shim' }, () => ({
+      contents: 'module.exports = function(elem, selector) { return elem.matches(selector); };',
+      loader: 'js',
+    }));
+  },
+};
+
 const sharedConfig = {
   stdin: {
     contents: entryContents,
@@ -96,7 +127,7 @@ const sharedConfig = {
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
-  plugins: [jqueryStubPlugin],
+  plugins: [jqueryStubPlugin, matchesSelectorShimPlugin],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
