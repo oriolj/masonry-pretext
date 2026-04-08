@@ -26,7 +26,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..', '..');
 const fixtureURL = pathToFileURL(path.join(__dirname, 'pages', 'bench.html')).toString();
 
 const args = new Map(
@@ -98,14 +97,6 @@ const result = await page.evaluate(({ items: ITEMS, runs: RUNS }) => {
     return t1 - t0;
   }
 
-  function runSet(useCallback, runs) {
-    // 5 warm-up runs to amortize JIT, deopts, font loading, etc.
-    for (let i = 0; i < 5; i++) timeOne(useCallback);
-    const times = [];
-    for (let i = 0; i < runs; i++) times.push(timeOne(useCallback));
-    return times;
-  }
-
   function stats(times) {
     const sorted = [...times].sort((a, b) => a - b);
     return {
@@ -134,7 +125,6 @@ const result = await page.evaluate(({ items: ITEMS, runs: RUNS }) => {
     runs: RUNS,
     without: stats(without),
     withCallback: stats(withCb),
-    raw: { without, withCb },
   };
 }, { items: ITEMS, runs: RUNS });
 
