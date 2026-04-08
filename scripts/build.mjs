@@ -273,18 +273,11 @@ var dashedVendorProperties = {
         replace: `})( typeof window !== 'undefined' ? window : {}, function factory() {`,
       },
       // ── #007 — delete the IE11/Firefox<29 box-sizing detection ────────────
-      // get-size has a one-time setup() that creates a probe div, mounts it,
-      // measures it, and removes it on the first call to getSize() — solely
-      // to detect a quirk where IE11 and Firefox<29 returned the *inner*
-      // width on `style.width` for border-box elements while modern browsers
-      // return the outer width. At our browser baseline (chrome84 /
-      // firefox86 / safari15 / edge84) the modern behavior is universal, so
-      // `isBoxSizeOuter` is always true. Delete the setup machinery + the
-      // call site, then collapse `isBorderBoxSizeOuter = isBorderBox &&
-      // isBoxSizeOuter` into just `isBorderBox`.
-      //
-      // Side benefit: eliminates one forced-reflow round-trip on the first
-      // getSize() call (`appendChild` → `getComputedStyle` → `removeChild`).
+      // get-size's setup() probe-div trick existed to detect a quirk where
+      // IE11 / Firefox<29 returned `style.width` as inner-width on border-box
+      // elements. At our browser baseline (chrome84/firefox86/safari15/edge84)
+      // the outer-width behavior is universal, so isBoxSizeOuter is always
+      // true and the setup machinery is dead. See improvements/007-*.md.
       {
         description: '[#007] delete get-size setup() function + isSetup/isBoxSizeOuter state',
         find: `// -------------------------- setup -------------------------- //

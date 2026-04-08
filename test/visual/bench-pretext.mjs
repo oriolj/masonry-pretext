@@ -1,47 +1,32 @@
 #!/usr/bin/env node
 // test/visual/bench-pretext.mjs — microbenchmark for the pretext fast path.
 //
-// Measures how much wall-clock time the `pretextify` callback saves vs
-// calling `item.getSize()` (the DOM-measuring default) on a grid of N items.
-// Builds the grid programmatically inside the browser context, runs Masonry
-// many times under each configuration, reports the median + spread.
+// Times `new Masonry(grid, opts)` on a programmatically-built N-item grid,
+// once with the default DOM-measuring path and once with `pretextify` set to
+// an O(1) Map lookup. Both paths build the same grid + Map outside the timed
+// region (the Map allocation is a no-op for the without-callback path —
+// kept for symmetry so GC pressure is identical between the two sets).
+// Reports median + spread; output is plaintext for pasting into commit
+// messages and improvement docs.
 //
 // Usage:
-//   node test/visual/bench-pretext.mjs                # default: 500 items, 30 runs
-//   node test/visual/bench-pretext.mjs --items=1000 --runs=20
-//
-// Output is plaintext suitable for pasting into improvement doc / commit msg.
-//
-// Methodology:
-//   - Same grid built fresh for every run (fair comparison, no warm-cache wins).
-//   - 5 warm-up runs before each measurement set, discarded.
-//   - Median + min + max reported.
-//   - The pretextify callback returns precomputed sizes; in real usage the
-//     equivalent prepare+layout cost would be a one-time setup outside the
-//     hot path. This bench isolates the layout-loop savings, not the
-//     measurement library's setup cost.
+//   node test/visual/bench-pretext.mjs               # 500 items × 30 runs
+//   node test/visual/bench-pretext.mjs --items=2000 --runs=20
 
-import { chromium } from '@playwright/test';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import path from 'node:path';
+import { parseArgs } from 'node:util';
+import { launchPage, gotoFixture } from './_harness.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const fixtureURL = pathToFileURL(path.join(__dirname, 'pages', 'bench.html')).toString();
+const { values } = parseArgs({
+  options: {
+    items: { type: 'string', default: '500' },
+    runs:  { type: 'string', default: '30'  },
+  },
+});
+const ITEMS = Number(values.items);
+const RUNS = Number(values.runs);
 
-const args = new Map(
-  process.argv.slice(2).map(a => {
-    const m = a.match(/^--(\w+)=(.+)$/);
-    return m ? [m[1], m[2]] : [a, true];
-  }),
-);
-const ITEMS = Number(args.get('items') ?? 500);
-const RUNS = Number(args.get('runs') ?? 30);
-
-const browser = await chromium.launch({ headless: true });
-const ctx = await browser.newContext({ viewport: { width: 1024, height: 800 }, deviceScaleFactor: 1 });
-const page = await ctx.newPage();
-await page.goto(fixtureURL);
-await page.waitForFunction(() => window.__READY === true);
+const { browser, page } = await launchPage({ viewport: { width: 1024, height: 800 } });
+await gotoFixture(page, 'bench.html');
 
 const result = await page.evaluate(({ items: ITEMS, runs: RUNS }) => {
   const COL_WIDTH = 60;
@@ -60,31 +45,20 @@ const result = await page.evaluate(({ items: ITEMS, runs: RUNS }) => {
     return grid;
   }
 
-  function destroyGrid(grid) {
-    grid.remove();
-  }
-
   function timeOne(useCallback) {
     const grid = buildGrid();
-    // Precompute sizes + an O(1) element→size Map outside the timed region.
-    // This mirrors realistic pretext usage: prepare() runs once at startup
-    // (or per content edit), the per-item lookup in the hot path is a hash
-    // lookup, not an O(N) scan. An earlier version of this bench used
-    // Array.indexOf inside the callback and was 16% SLOWER than the DOM
-    // path because the per-call O(N) lookup dominated the savings —
-    // worth remembering: the callback's CONTENT cost matters as much
-    // as the saved reflows.
-    let sizeMap = null;
-    if (useCallback) {
-      const items = grid.querySelectorAll('.bench-item');
-      sizeMap = new Map();
-      for (let i = 0; i < items.length; i++) {
-        sizeMap.set(items[i], {
-          outerWidth: COL_WIDTH,
-          // Vary heights slightly so column packing has real work to do.
-          outerHeight: 30 + (i % 5) * 8,
-        });
-      }
+    // Build the size Map in BOTH paths so GC pressure is symmetric across
+    // interleaved runs (otherwise the without-callback set sees GC from the
+    // previous with-callback iteration's Map and the bench is biased — see
+    // improvements/009 calibration notes).
+    const items = grid.querySelectorAll('.bench-item');
+    const sizeMap = new Map();
+    for (let i = 0; i < items.length; i++) {
+      sizeMap.set(items[i], {
+        outerWidth: COL_WIDTH,
+        // Vary heights so column packing has real work to do.
+        outerHeight: 30 + (i % 5) * 8,
+      });
     }
     const opts = { columnWidth: COL_WIDTH, transitionDuration: 0 };
     if (useCallback) {
@@ -93,7 +67,7 @@ const result = await page.evaluate(({ items: ITEMS, runs: RUNS }) => {
     const t0 = performance.now();
     new Masonry(grid, opts);
     const t1 = performance.now();
-    destroyGrid(grid);
+    grid.remove();
     return t1 - t0;
   }
 
@@ -109,11 +83,10 @@ const result = await page.evaluate(({ items: ITEMS, runs: RUNS }) => {
     };
   }
 
-  // Interleave runs to avoid systematic bias from warm caches or thermal drift
-  // affecting one set more than the other.
   const without = [];
   const withCb = [];
-  // Warm-up for both
+  // Warm-up: 5 of each, interleaved like the measurement set so JIT shapes
+  // match what the timed region will see.
   for (let i = 0; i < 5; i++) { timeOne(false); timeOne(true); }
   for (let i = 0; i < RUNS; i++) {
     without.push(timeOne(false));

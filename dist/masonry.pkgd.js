@@ -1270,7 +1270,7 @@ var Masonry = (() => {
         };
         proto._getItemLayoutPosition = function(item) {
           var pretextify = this.options.pretextify;
-          var pretextSize = pretextify && pretextify(item.element, item);
+          var pretextSize = pretextify && pretextify(item.element);
           if (pretextSize) {
             item.size = pretextSize;
           } else {

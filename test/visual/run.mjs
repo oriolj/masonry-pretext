@@ -14,15 +14,14 @@
 //
 // See FORK_ROADMAP.md § Methodology, Layer 1 + Layer 2.
 
-import { chromium } from '@playwright/test';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
+import { launchPage, gotoFixture } from './_harness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PAGES_DIR = path.join(__dirname, 'pages');
 const SNAP_DIR = path.join(__dirname, '__screenshots__');
 
 const args = new Set(process.argv.slice(2));
@@ -85,15 +84,7 @@ const cases = [
     ],
   },
   {
-    // Pretextify (#009): all 4 items are default 60×30 in the DOM, but the
-    // pretextify callback returns variable heights per item. The expected
-    // positions reflect the pretext-derived layout, NOT the DOM-derived one.
-    // If pretextify is broken (callback ignored, item.getSize() runs):
-    //   item 3 would land at (0, 30) because col 0 ends at 30 and ties with
-    //   cols 1/2 at 30, picking the leftmost.
-    // With pretextify working (item 0's outerHeight=60 from the callback):
-    //   col 0 ends at 60, cols 1/2 end at 30 — item 3 picks col 1 (leftmost
-    //   shortest), landing at (60, 30).
+    // Pretextify (#009) — see test/visual/pages/pretext.html for the discriminator design.
     name: 'pretext',
     page: 'pretext.html',
     container: '#pretext',
@@ -110,10 +101,6 @@ const cases = [
 // Runner
 // ─────────────────────────────────────────────────────────────────────────────
 
-function fixtureURL(name) {
-  return pathToFileURL(path.join(PAGES_DIR, name)).toString();
-}
-
 async function exists(p) {
   try { await stat(p); return true; } catch { return false; }
 }
@@ -126,8 +113,7 @@ async function readScreenshotPair(actualBuf, baselinePath) {
 }
 
 async function runCase(page, c) {
-  await page.goto(fixtureURL(c.page));
-  await page.waitForFunction(() => window.__READY === true);
+  await gotoFixture(page, c.page);
 
   // ── Layer 1: position assertions ───────────────────────────────────────────
   const positions = await page.evaluate((sel) => {
@@ -204,12 +190,7 @@ async function runCase(page, c) {
 }
 
 async function main() {
-  const browser = await chromium.launch({ headless: true });
-  const ctx = await browser.newContext({
-    viewport: { width: 800, height: 600 },
-    deviceScaleFactor: 1,
-  });
-  const page = await ctx.newPage();
+  const { browser, page } = await launchPage();
 
   const filtered = FILTER ? cases.filter(c => c.name.includes(FILTER)) : cases;
 

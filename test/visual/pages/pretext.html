@@ -8,13 +8,12 @@
 <body>
 
   <!--
-    Discriminating test for the `pretextify` callback (improvement #009).
-    Every .item in the DOM is the *default* 60×30 size — there are NO
-    h2/h3/h4/w2/w3 size classes here on purpose. The pretextify callback
-    below returns DIFFERENT sizes per item index. The visual runner asserts
-    positions that match the *pretext-derived* layout, not the DOM-derived
-    one. If pretextify is broken and `item.getSize()` runs instead, item 3
-    would land at (0, 30) instead of (60, 30) and the test fails loudly.
+    Discriminating fixture for `pretextify` (#009). Items are default 60×30
+    in the DOM but the callback returns variable heights — item 0 gets
+    outerHeight: 60. If the callback is consulted, item 3 lands at col 1
+    (col 0 is full at 60, cols 1/2 are tied shortest at 30 → picks leftmost).
+    If `item.getSize()` runs instead, item 3 lands at col 0 (all cols tied
+    at the DOM 30). The position assertion in run.mjs catches the regression.
   -->
   <div id="pretext" class="container">
     <div class="item"></div>
@@ -25,13 +24,11 @@
 
   <script src="../../../dist/masonry.pkgd.min.js"></script>
   <script>
-    // Hardcoded sizes per item index — proves the callback is consulted
-    // and DOM measurement is bypassed.
     var pretextSizes = [
-      { outerWidth: 60, outerHeight: 60 }, // item 0 — taller than DOM (30)
-      { outerWidth: 60, outerHeight: 30 }, // item 1 — DOM-equivalent
-      { outerWidth: 60, outerHeight: 30 }, // item 2 — DOM-equivalent
-      { outerWidth: 60, outerHeight: 30 }, // item 3 — DOM-equivalent
+      { outerWidth: 60, outerHeight: 60 }, // taller than DOM — the discriminator
+      { outerWidth: 60, outerHeight: 30 },
+      { outerWidth: 60, outerHeight: 30 },
+      { outerWidth: 60, outerHeight: 30 },
     ];
 
     var grid = document.querySelector('#pretext');
@@ -41,8 +38,7 @@
       columnWidth: 60,
       transitionDuration: 0,
       pretextify: function (elem) {
-        var index = Array.prototype.indexOf.call(items, elem);
-        return pretextSizes[index];
+        return pretextSizes[Array.prototype.indexOf.call(items, elem)];
       },
     });
     window.__READY = true;
