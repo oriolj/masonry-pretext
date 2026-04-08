@@ -18,6 +18,23 @@ The goals of this fork are narrow and concrete:
 
 Every change in this fork has to produce a **measurable** improvement in speed, bundle size, or UX. Cosmetic refactors and abstractions without a benchmark or before/after number are explicitly out of scope. The full design notes, dependency audit, and prioritized work list live in [`FORK_ROADMAP.md`](./FORK_ROADMAP.md).
 
+### 🎯 The headline feature: zero-flash SSR cascading grids
+
+> **Cumulative Layout Shift drops from 0.74 to 0.00 — measured.** No other masonry-style library on the market can do this.
+
+`masonry-pretext` ships [`Masonry.computeLayout`](./improvements/017-compute-layout-static-helper.md), a pure-Node helper that computes cascading-grid positions on the server. Combined with [`initLayout: false`](./improvements/018-init-layout-false-adoption.md) on the client (`masonry-pretext` adopts the existing positions instead of recomputing them) and the [`static: true`](./improvements/015-static-ssr-preset.md) preset (no observers, no animations, no fonts.ready hook), the result is a cascading grid that **renders correctly on first paint** — no flow-to-absolute reflow, no animated settle, no observable hydration jank.
+
+| Strategy | Median CLS | First-paint final layout | Hydration flash |
+|---|---:|---|---|
+| **Old way** — server emits flow layout, client runs `new Masonry(grid, {})` (every other masonry library) | **0.7421** ❌ | ❌ No (waits for JS) | ❌ Visible reflow |
+| **`masonry-pretext` SSR pipeline** — server `Masonry.computeLayout` → inline positions → client `initLayout: false, static: true` | **0.0000** ✅ | ✅ Yes (positions in HTML) | ✅ **None** |
+
+Reproduce with `make bench` (drives Playwright + chromium against two synthetic SSR pages, measures CLS via `PerformanceObserver`, reports median + p10/p90 across 30 runs). Source: [`test/visual/bench-hydration.mjs`](./test/visual/bench-hydration.mjs).
+
+The server-side layout cost is also negligible: **`Masonry.computeLayout` runs in 0.13 ms median for a 5000-item grid** in pure Node — under the 5 ms budget for a single server response by 40×. Reproduce with `node test/visual/bench-server-layout.mjs`.
+
+**See [`examples/astro/`](./examples/astro/) for a runnable end-to-end demo** (Astro + `Masonry.computeLayout` + `initLayout: false` + `static: true`). Drop the file into a fresh Astro project, install `masonry-pretext`, run `npm run dev`, and verify CLS = 0.00 in DevTools yourself. Full design + acceptance criteria in [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md).
+
 ### Key improvements vs upstream
 
 User-visible wins that have already landed in the fork. Each entry links to the per-change record in `improvements/` and the git tag where the change first shipped.

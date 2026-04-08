@@ -8,7 +8,7 @@
 #
 # Run `make help` to list targets.
 
-.PHONY: help start install build test test-update measure clean ci
+.PHONY: help start install build test test-update measure bench clean ci
 
 # Default target shows help so a bare `make` is non-destructive.
 help:
@@ -21,6 +21,7 @@ help:
 	@echo -e "  \033[36mmake test\033[0m          run the visual regression suite (rebuilds first)"
 	@echo -e "  \033[36mmake test-update\033[0m   refresh visual snapshots (commit them with the source change)"
 	@echo -e "  \033[36mmake measure\033[0m       print size / LOC / dep metrics"
+	@echo -e "  \033[36mmake bench\033[0m         run server-layout + hydration benchmarks (slow, optional)"
 	@echo -e "  \033[36mmake clean\033[0m         delete dist artifacts and visual diff outputs"
 	@echo -e "  \033[36mmake ci\033[0m            install + build + test (the gate every commit must pass)"
 	@echo -e ""
@@ -63,6 +64,12 @@ test-update: build
 
 measure:
 	@./scripts/measure.sh
+
+bench: build
+	@echo -e "\n\033[1mServer-side layout (pure Node):\033[0m"
+	@node test/visual/bench-server-layout.mjs
+	@echo -e "\n\033[1mClient-side hydration (chromium):\033[0m"
+	@node test/visual/bench-hydration.mjs
 
 clean:
 	@rm -f dist/masonry.pkgd.js dist/masonry.pkgd.min.js
