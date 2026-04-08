@@ -1082,22 +1082,22 @@ For each of A/B/E/L, the path is: either **add the fixture before deleting** (pr
 
 The recommended order from here:
 
-1. **#011 — README rewrite + Tier 0 packaging fixes (combined commit).**
+1. **#011 — README rewrite + Tier 0 packaging fixes (combined commit).** ✅ landed (`v5.0.0-dev.11`)
    - Rewrite README Install / CDN / Package managers / Initialize sections to reflect masonry-pretext (no jQuery, fork URL, vanilla API only)
    - Add `exports` / `module` / `types` to `package.json` (T0.2)
    - Add `.github/workflows/test.yml` running `make ci` on push + PR (T0.3)
    - Harden chromium launch flags in `_harness.mjs` (T0.4) — must precede CI or CI fails on first run
-   - **No source code change**, ~1 hour, prevents user confusion + adds CI gate. Highest leverage for the smallest commit. **All four reviews independently flag at least one of these as a high-priority gap.**
-2. **#012 — Item H (§ P.1b per-item ResizeObserver).** Closes the dominant upstream complaint category (8+ duplicate image-overlap issues). Headline UX feature. Needs a new fixture with delayed-load content. **All four reviews rank this as high-priority.**
-3. **#013 — Item G (§ P.1 math fix for `#1006`).** Closes the top open upstream issue (53 reactions, more than the next 5 combined). Small math change in `measureColumns()`.
-4. **#014 — Item K (§ P.2 MutationObserver auto-relayout).** Removes the "forgot to reload" footgun.
-5. **#015 — Items M + N + O (allocation-free column search + WeakMap registry + masonry-specific getSize).** All three are pure cleanups with no breaking change, no API surface change, real-but-small perf wins. ~150-300 B gz savings combined. Land them before the big deletions because they're the lowest-risk improvements still available.
-6. **#016 — Items A + B + D + F (delete hide/reveal/stagger + inline EvEmitter + dedupe).** Combined ~750-950 B gz. Breaking change for plugin authors. **Cut v5.0.0-rc.1 immediately after.**
-7. **#017 — Items C + E (`class extends` + delete `Outlayer.create`/`htmlInit`).** Architectural cleanup, ~200-310 B gz, breaking change for `data-masonry` users.
-8. **#018 — Item P (engine/adapter separation refactoring).** No bytes saved but unlocks easier benchmarking, SSR dry runs, future worker offloading. Enables item L (WAAPI) to land cleanly.
-9. **#019+ — TypeScript types**, item L (WAAPI), § 2.4 (slim Outlayer vendor). Post-rc work toward v5.0.0 final.
+2. **#012 — Item H (§ P.1b per-item ResizeObserver).** ✅ landed (`v5.0.0-dev.12`). Closes the dominant upstream complaint category (8+ duplicate image-overlap issues). +365 B gz.
+3. **#013 — Real ESM + CJS bundles (§ 2.2 closeout).** ✅ landed (`v5.0.0-dev.13`). Inserted ahead of item G after the Tier 0 fix in #011 turned out to have only set the `package.json` metadata without the matching dist outputs — the `import` / `require` conditions still resolved to the IIFE, breaking every modern-bundler consumer. Fixed in #013 with parallel `dist/masonry.cjs` + `dist/masonry.mjs` builds. Zero source change, +0 B to existing IIFE bundles.
+4. **#014 — Item G (§ P.1 math fix for `#1006`).** ✅ landed (`v5.0.0-dev.14`). Closes the top open upstream issue (53 reactions, more than the next 5 combined). Detection across three layers (literal `'20%'` option, inline style, walked stylesheet rules) + stride-formula math fix. +391 B gz. New `percent-cols` discriminating fixture.
+5. **#015 — Item K (§ P.2 MutationObserver auto-relayout).** Removes the "forgot to reload" footgun.
+6. **#016 — Items M + N + O (allocation-free column search + WeakMap registry + masonry-specific getSize).** All three are pure cleanups with no breaking change, no API surface change, real-but-small perf wins. ~150-300 B gz savings combined. Land them before the big deletions because they're the lowest-risk improvements still available.
+7. **#017 — Items A + B + D + F (delete hide/reveal/stagger + inline EvEmitter + dedupe).** Combined ~750-950 B gz. Breaking change for plugin authors. **Cut v5.0.0-rc.1 immediately after.**
+8. **#018 — Items C + E (`class extends` + delete `Outlayer.create`/`htmlInit`).** Architectural cleanup, ~200-310 B gz, breaking change for `data-masonry` users.
+9. **#019 — Item P (engine/adapter separation refactoring).** No bytes saved but unlocks easier benchmarking, SSR dry runs, future worker offloading. Enables item L (WAAPI) to land cleanly.
+10. **#020+ — TypeScript types**, item L (WAAPI), § 2.4 (slim Outlayer vendor). Post-rc work toward v5.0.0 final.
 
-After #011-017 land, `dist/masonry.pkgd.min.js` should be roughly **5,400-5,700 B gzipped** vs upstream's 7,367 — about **−22 % to −27 % vs upstream**. Enough delta to call v5.0.0-rc.1 and stop the dev tag sequence.
+After #011-018 land, `dist/masonry.pkgd.min.js` should be roughly **5,400-5,700 B gzipped** vs upstream's 7,367 — about **−22 % to −27 % vs upstream**. Enough delta to call v5.0.0-rc.1 and stop the dev tag sequence.
 
 ## What the original deep research missed
 
@@ -1174,7 +1174,7 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | **R** | **Promise-based async/await API** — `layout()`/`appended()`/`prepended()` return a Promise that resolves after transitions complete | § Post-#010 (review #5) | ⏸️ conditional | | **Conditional on item A**: if hide/reveal animation system is deleted, there's nothing to await. If A is deferred and transitions are kept, this is a real DX win (~30-50 LOC). |
 | ↳ alt to B | **CSS Variable staggering** — apply `--index` per item, use `transition-delay: calc(var(--index) * 50ms)` in CSS | § Post-#010 (review #5) | 🟡 alternative | | **Alternative path for item B**: if we KEEP stagger as a feature instead of deleting it, this is a cleaner JS-free implementation (~140 B savings + designer-controllable timing). Decision deferred until item B is sequenced. |
 | **— High UX wins (post-#010 review) — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — —** |
-| **G** | **Math fix for percentage-width + gutter** | § P.1 (math) | ⬜ | | **closes desandro/masonry#1006 (53 reactions, top open issue)** |
+| **G** | **Math fix for percentage-width + gutter** | § P.1 (math) | ✅ `v5.0.0-dev.14` | [014-percent-column-width-fix.md](./improvements/014-percent-column-width-fix.md) | **closes desandro/masonry#1006 (53 reactions, top open upstream issue)**; +391 B gz cost; new percent-cols discriminating fixture (3 detection layers: literal `'20%'` option, inline style, walked stylesheet rules) |
 | **H** | Per-item ResizeObserver for image-overlap | § P.1b | ✅ `v5.0.0-dev.12` | [012-per-item-resize-observer.md](./improvements/012-per-item-resize-observer.md) | **closes desandro/masonry#1147 + 7 duplicates**; +365 B gz cost; new resize-observer discriminating fixture; first attempt's "skip first event" logic was a bug — see calibration lesson |
 | K | MutationObserver auto-relayout (opt-in) | § P.2 | ⬜ | | removes the "forgot to call reload" footgun |
 | I | Column-pick strategy callback (don't always pick shortest) | § 811 | ⬜ | | closes `#811` (10 reactions) |

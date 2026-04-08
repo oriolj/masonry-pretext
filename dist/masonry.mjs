@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.13
+ * Masonry PACKAGED v5.0.0-dev.14
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1253,6 +1253,50 @@ var require_masonry = __commonJS({
       var Masonry2 = Outlayer.create("masonry");
       Masonry2.compatOptions.fitWidth = "isFitWidth";
       var proto = Masonry2.prototype;
+      var PERCENT_RE = /^\s*(\d*\.?\d+)\s*%\s*$/;
+      function detectPercentWidth(elem) {
+        var inline = elem.style && elem.style.width;
+        var inlineMatch = inline && inline.match(PERCENT_RE);
+        if (inlineMatch) return parseFloat(inlineMatch[1]);
+        if (typeof document === "undefined" || !document.styleSheets) return null;
+        var found = null;
+        for (var i = 0; i < document.styleSheets.length; i++) {
+          var rules;
+          try {
+            rules = document.styleSheets[i].cssRules;
+          } catch (e) {
+            continue;
+          }
+          if (rules) {
+            var inner = scanRulesForPercentWidth(rules, elem);
+            if (inner !== null) found = inner;
+          }
+        }
+        return found;
+      }
+      function scanRulesForPercentWidth(rules, elem) {
+        var found = null;
+        for (var i = 0; i < rules.length; i++) {
+          var rule = rules[i];
+          if (rule.media && rule.media.mediaText && typeof window !== "undefined" && window.matchMedia && !window.matchMedia(rule.media.mediaText).matches) {
+            continue;
+          }
+          if (rule.style && rule.selectorText && rule.style.width && /%\s*$/.test(rule.style.width)) {
+            try {
+              if (elem.matches(rule.selectorText)) {
+                var m = rule.style.width.match(/(\d*\.?\d+)\s*%/);
+                if (m) found = parseFloat(m[1]);
+              }
+            } catch (e) {
+            }
+          }
+          if (rule.cssRules) {
+            var inner = scanRulesForPercentWidth(rule.cssRules, elem);
+            if (inner !== null) found = inner;
+          }
+        }
+        return found;
+      }
       var baseCreate = proto._create;
       proto._create = function() {
         baseCreate.call(this);
@@ -1330,7 +1374,21 @@ var require_masonry = __commonJS({
       };
       proto._resetLayout = function() {
         this.getSize();
-        this._getMeasurement("columnWidth", "outerWidth");
+        this._columnWidthPercent = null;
+        var optCW = this.options.columnWidth;
+        var literalMatch = typeof optCW === "string" && optCW.match(PERCENT_RE);
+        if (literalMatch) {
+          this._columnWidthPercent = parseFloat(literalMatch[1]);
+          this.columnWidth = 0;
+        } else {
+          this._getMeasurement("columnWidth", "outerWidth");
+          if (typeof optCW === "string" || optCW instanceof HTMLElement) {
+            var sizer = optCW instanceof HTMLElement ? optCW : this.element.querySelector(optCW);
+            if (sizer) {
+              this._columnWidthPercent = detectPercentWidth(sizer);
+            }
+          }
+        }
         this._getMeasurement("gutter", "outerWidth");
         this.measureColumns();
         this.colYs = [];
@@ -1342,6 +1400,11 @@ var require_masonry = __commonJS({
       };
       proto.measureColumns = function() {
         this.getContainerWidth();
+        if (this._columnWidthPercent && this.containerWidth) {
+          this.cols = Math.max(1, Math.round(100 / this._columnWidthPercent));
+          this.columnWidth = (this.containerWidth + this.gutter) / this.cols;
+          return;
+        }
         if (!this.columnWidth) {
           var firstItem = this.items[0];
           var firstItemElem = firstItem && firstItem.element;

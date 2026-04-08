@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: percent columnWidth + gutter (#014 / #1006)</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    /*
+      Discriminating fixture for #014 (closes desandro/masonry#1006, the
+      highest-reaction open upstream issue at 53 reactions).
+
+      Container is 240px wide. Gutter is 20px. The sizer element
+      `.grid-sizer` has width: 20%, which the browser resolves to 48px
+      BEFORE masonry sees it.
+
+      Without the fix, masonry's measureColumns runs:
+        columnWidth += gutter         → 48 + 20 = 68
+        cols = floor((240+20) / 68)   → floor(3.82) = 3
+      Three columns. The 5 items pack into 3 cols and items 3, 4 wrap
+      to row 2 — item 4 lands at (left=68px, top=30px).
+
+      With the #014 fix, _columnWidthPercent = 20 is detected, so:
+        cols = round(100 / 20)            → 5
+        columnWidth = (240 + 20) / 5      → 52
+      Five columns. All five items pack into row 1 — item 4 lands at
+      (left=208px, top=0px) instead.
+
+      Items are sized via `calc(20% - 16px)` so each item is 32px wide
+      and 5 items + 4 × 20px gutters fit exactly in 240px. The 16px
+      reduction is `gutter * (cols-1) / cols = 20 * 4 / 5 = 16` — the
+      standard formula for "N percent-width columns + gutters fit in
+      a 100%-width container".
+    */
+    #percent-cols { width: 240px; padding: 0; margin-bottom: 20px; }
+    #percent-cols .grid-sizer { width: 20%; }
+    #percent-cols .item { width: calc(20% - 16px); height: 30px; }
+  </style>
+</head>
+<body>
+
+  <div id="percent-cols" class="container">
+    <div class="grid-sizer"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    window.__MSNRY = new Masonry('#percent-cols', {
+      itemSelector: '.item',
+      columnWidth: '.grid-sizer',
+      gutter: 20,
+      transitionDuration: 0,
+    });
+    window.__READY = true;
+  </script>
+
+</body>
+</html>

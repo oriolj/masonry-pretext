@@ -126,6 +126,24 @@ const cases = [
       { left: '60px',  top: '30px' }, // discriminating: ResizeObserver relayout fired
     ],
   },
+  {
+    // Percentage columnWidth + gutter math fix (#014, closes desandro/masonry#1006).
+    // See test/visual/pages/percent-cols.html for the discriminator design.
+    // Container 240px, gutter 20px, sizer width 20%. Without the fix the
+    // gutter-overshoot math drops to 3 columns and items 3+4 wrap to row 2;
+    // with the fix the math snaps to round(100/20) = 5 columns and all 5
+    // items pack into row 1.
+    name: 'percent-cols',
+    page: 'percent-cols.html',
+    container: '#percent-cols',
+    expected: [
+      { left: '0px',   top: '0px' },
+      { left: '52px',  top: '0px' },
+      { left: '104px', top: '0px' },
+      { left: '156px', top: '0px' },
+      { left: '208px', top: '0px' }, // discriminating: 5-col layout, no wrap
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -17,6 +17,80 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.14 — 2026-04-08 — Percentage column width + gutter math fix (§ P.1, closes upstream #1006)
+
+> Tag: `v5.0.0-dev.14` · Improvement: [`014-percent-column-width-fix.md`](./improvements/014-percent-column-width-fix.md) · **Closes upstream**: [`desandro/masonry#1006`](https://github.com/desandro/masonry/issues/1006) (53 reactions — the highest-reaction open issue in the upstream tracker)
+
+### Headline
+
+**Percentage `columnWidth` + non-zero `gutter` now pick the right number of columns.** When masonry's `columnWidth` originates from a percentage — either via the new first-class literal `columnWidth: '20%'`, an inline `style="width: 20%"` on the sizer element, or a stylesheet rule like `.grid-sizer { width: 20% }` — the gutter-overshoot math in `measureColumns` no longer drops a column. The bug had been open in upstream since 2018 with **53 reactions** and zero movement; this is the highest-reaction unresolved issue in `desandro/masonry`.
+
+Concrete example: in a 1000px container with a `.grid-sizer { width: 20% }` and a 10px gutter, upstream computes `floor((1000+10) / (200+10)) = 4` columns instead of the obvious 5, leaving 170px of unused space on the right. With the fix, masonry detects the percentage origin and snaps to `cols = round(100/20) = 5`, then derives `columnWidth = (1000+10)/5 = 202` so the gutters fit inside the container.
+
+### Added
+
+- **First-class literal percentage option:** `new Masonry(grid, { columnWidth: '20%' })` is now supported directly. Previously this would crash at construction time because `_getMeasurement` called `querySelector('20%')` (an invalid CSS selector) and threw a `SyntaxError`. The literal-percent path is detected before `_getMeasurement` runs and short-circuits the call.
+- **`test/visual/pages/percent-cols.html`** — discriminating fixture for the fix. Container 240px, gutter 20px, sizer 20%. Without the fix, masonry computes 3 columns and items 3+4 wrap to row 2; with the fix, masonry computes 5 columns and all 5 items pack into row 1. The position assertion in `test/visual/run.mjs` checks the exact post-fix pixel positions and fails loudly on the broken case (verified by toggling the fix off via `if (false && ...)`).
+
+### Changed
+
+- **`masonry.js` — `proto._resetLayout`:** detects percent-origin column widths via three layers (literal option, inline style on sizer, matched CSS rule walked from `document.styleSheets`) and stashes `_columnWidthPercent` for `measureColumns` to consume. Cross-origin stylesheets throw on `.cssRules` access and are silently skipped; `@media` and `@supports` rules are recursed into only when their condition currently matches `window.matchMedia(rule.media.mediaText)` (otherwise we'd pick up percents from inactive viewports).
+- **`masonry.js` — `proto.measureColumns`:** new gated branch at the top of the function. When `_columnWidthPercent` is set, derives `cols = round(100/percent)` directly and recomputes `columnWidth = (containerWidth + gutter) / cols`. The stride formula matches the existing code's convention where `this.columnWidth += this.gutter` makes `columnWidth` a per-column **stride** (item width + gutter), not just the item width.
+
+### Unchanged (intentional)
+
+- **All non-percent column-width paths.** Fixed-pixel `columnWidth` (e.g. `columnWidth: 200`) and selector-pointing-to-non-percent-sizer (e.g. `columnWidth: '.grid-sizer'` where `.grid-sizer` has a fixed pixel width) take the standard branch unchanged. The percent path is gated entirely on `_columnWidthPercent` being non-null after detection.
+- **The other 7 visual fixtures** all still pass byte-for-byte against their existing screenshot baselines. No screenshot baseline updates besides the new `percent-cols.png`.
+- **SSR safety**, **module-smoke**, **no-jquery** — all three gates unchanged. The detection helpers are wrapped in `typeof document === 'undefined'` and `typeof window === 'undefined'` guards.
+
+### Numbers
+
+| File                       |    pre-014 |    post-014 | Δ raw     | Δ%       |
+| ---                        |        ---:|         ---:| ---:      | ---:     |
+| `masonry.js` (source)      |     12,914 |     18,361  | **+5,447** | **+42.18%** (verbose comments — same pattern as #009/#010/#012) |
+| `dist/masonry.pkgd.js`     |     52,126 |     54,801  | +2,675    | +5.13%   |
+| `dist/masonry.pkgd.min.js` raw  | 22,984 | **24,241**  | **+1,257** | **+5.47%** |
+| `dist/masonry.pkgd.min.js` gzip |  7,323 | **7,714**   | **+391**   | **+5.34%** |
+| `dist/masonry.pkgd.min.js` brotli |  6,591 | **6,973**   | **+382** | **+5.80%** |
+| `dist/masonry.cjs`         |     49,099 |     51,648  | +2,549    | +5.19%   |
+| `dist/masonry.mjs`         |     50,288 |     52,837  | +2,549    | +5.07%   |
+| Visual regression tests    |        7/7 |        8/8  | +1        |          |
+| Test gates                 | 7 + ✓ + ✓ + ✓ | 8 + ✓ + ✓ + ✓ | unchanged |        |
+| Tracked files              |         85 |          87 | +2        | (fixture html + screenshot baseline) |
+
+### Vs upstream-frozen v4.2.2
+
+| Metric                          |  v4.2.2 | v5.0.0-dev.14 | Δ raw  | Δ%      |
+| ---                             |    ---: |          ---: |  ---:  |    ---: |
+| `dist/masonry.pkgd.min.js` raw  | 24,103  |    **24,241** | +138   |  +0.57% |
+| `dist/masonry.pkgd.min.js` gzip |  7,367  |    **7,714**  | +347   |  +4.71% |
+| `dist/masonry.pkgd.min.js` brotli| 6,601  |    **6,973**  | +372   |  +5.63% |
+
+The fork has slipped to **slightly above upstream** in all three metrics for the first time since #006. **Expected and acceptable** — the combined cost of `#009 pretext + #010 fonts + #012 ResizeObserver + #014 percent fix` (~841 B gz cumulative) closes 10+ long-stale upstream issues plus a measured 17-24% layout speedup, and the next batch of pure deletions (items A-F + M-O in `FORK_ROADMAP.md`, ~950-1500 B gz combined) restores the lead with margin to spare.
+
+### Predicted vs actual
+
+| Metric                 | Predicted               | Actual    | Verdict        |
+| ---                    | ---                     |       ---:| ---            |
+| `min.js` raw           | +900 to +1,500 B        | +1,257 B  | ✅ middle of band |
+| `min.js` gzip          | +300 to +500 B          | +391 B    | ✅ middle of band |
+| `min.js` brotli        | similar to gzip         | +382 B    | ✅              |
+| `masonry.js` source    | +4,000 to +6,000 B      | +5,447 B  | ✅ upper band   |
+| Visual fixtures        | 7 → 8                   | 8/8       | ✅              |
+| Discriminator fails without fix | yes            | yes (item 1 at 68px) | ✅      |
+
+**The predictions calibrated correctly this time** — `+391 B gz` is squarely in the predicted `+300 to +500 B` band. Cumulative calibration from #009-#012 produced sharp predictions.
+
+### Migration
+
+**No action needed for any existing user.** All the existing column-width input forms still work — fixed-pixel `columnWidth: 200`, selector strings `columnWidth: '.grid-sizer'`, HTMLElement references `columnWidth: someEl`. The fix only changes behavior when masonry detects that the resolved columnWidth originated from a percentage, and only changes it in the direction the upstream issue described.
+
+If you were working around `#1006` by hand-computing the column count and passing it as fixed pixels — you can drop the workaround. The literal-percent option `columnWidth: '20%'` is also new and is the cleanest expression of "I want N columns of 1/N width each".
+
+If you have stylesheet-defined percent widths loaded from a **cross-origin** CDN, layer 3 (stylesheet walking) won't see them due to the same-origin policy — falls back gracefully to no detection. Workaround: switch to layer 1 (literal `'20%'` option) or layer 2 (inline `style="width: 20%"` on the sizer).
+
+---
+
 ## v5.0.0-dev.13 — 2026-04-08 — Real ESM + CJS bundle outputs (§ 2.2)
 
 > Tag: `v5.0.0-dev.13` · Improvement: [`013-esm-cjs-builds.md`](./improvements/013-esm-cjs-builds.md) · **Closes upstream**: none directly, but unblocks every modern-bundler consumer

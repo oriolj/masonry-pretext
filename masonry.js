@@ -43,6 +43,79 @@
 
   var proto = Masonry.prototype;
 
+  // ── #014 — percentage columnWidth detection (§ P.1 / closes
+  // desandro/masonry#1006, the highest-reaction open upstream issue at
+  // 53 reactions). When the user specifies a percentage column width, the
+  // browser resolves the percent to pixels BEFORE masonry sees it, so the
+  // gutter-overshoot math in measureColumns ends up dropping a column —
+  // e.g. width=20% in a 1000px container with gutter=10 yields cols =
+  // floor((1000+10)/(200+10)) = 4 instead of the obvious 5. The fix is to
+  // detect that columnWidth came from a percent literal and snap cols to
+  // round(100/percent), then recompute columnWidth as
+  // (containerWidth - gutter*(cols-1))/cols so the gutters fit inside the
+  // container width — see proto.measureColumns below.
+  //
+  // Detection has three layers, all feeding `_columnWidthPercent`:
+  //   1. Literal in option:  new Masonry(g, { columnWidth: '20%' })
+  //   2. Inline style on the resolved sizer element
+  //   3. Matching CSS rule in any same-origin stylesheet
+  //
+  // Layer 3 walks `document.styleSheets`. Cross-origin sheets throw on
+  // `.cssRules` access — caught and skipped silently. `@media` and other
+  // grouping rules are recursed into ONLY when their condition currently
+  // matches (otherwise we'd find percent rules in inactive media queries).
+  // Last matching rule wins (rough cascade approximation, sufficient for
+  // the common `.grid-sizer { width: 20% }` pattern).
+  var PERCENT_RE = /^\s*(\d*\.?\d+)\s*%\s*$/;
+
+  function detectPercentWidth( elem ) {
+    // Layer 2 — inline style on the sizer element.
+    var inline = elem.style && elem.style.width;
+    var inlineMatch = inline && inline.match( PERCENT_RE );
+    if ( inlineMatch ) return parseFloat( inlineMatch[1] );
+
+    // Layer 3 — walk document.styleSheets for matching width-percent rules.
+    if ( typeof document === 'undefined' || !document.styleSheets ) return null;
+    var found = null;
+    for ( var i = 0; i < document.styleSheets.length; i++ ) {
+      var rules;
+      try { rules = document.styleSheets[i].cssRules; }
+      catch ( e ) { continue; } // CORS / security error — skip
+      if ( rules ) {
+        var inner = scanRulesForPercentWidth( rules, elem );
+        if ( inner !== null ) found = inner;
+      }
+    }
+    return found;
+  }
+
+  function scanRulesForPercentWidth( rules, elem ) {
+    var found = null;
+    for ( var i = 0; i < rules.length; i++ ) {
+      var rule = rules[i];
+      // Skip @media / @supports rules whose condition doesn't currently
+      // match — otherwise we'd pick up percents from inactive viewports.
+      if ( rule.media && rule.media.mediaText && typeof window !== 'undefined' &&
+           window.matchMedia && !window.matchMedia( rule.media.mediaText ).matches ) {
+        continue;
+      }
+      if ( rule.style && rule.selectorText && rule.style.width &&
+           /%\s*$/.test( rule.style.width ) ) {
+        try {
+          if ( elem.matches( rule.selectorText ) ) {
+            var m = rule.style.width.match( /(\d*\.?\d+)\s*%/ );
+            if ( m ) found = parseFloat( m[1] ); // last match wins
+          }
+        } catch ( e ) { /* invalid selector */ }
+      }
+      if ( rule.cssRules ) {
+        var inner = scanRulesForPercentWidth( rule.cssRules, elem );
+        if ( inner !== null ) found = inner;
+      }
+    }
+    return found;
+  }
+
   // document.fonts.ready first-paint gate (#010 / § P.4 — closes
   // desandro/masonry#1182) AND per-item ResizeObserver auto-relayout
   // (#012 / § P.1b — closes desandro/masonry#1147 + 7 image-overlap
@@ -157,7 +230,31 @@
 
   proto._resetLayout = function() {
     this.getSize();
-    this._getMeasurement( 'columnWidth', 'outerWidth' );
+
+    // ── #014 — detect percentage columnWidth before _getMeasurement runs.
+    // For the literal 'NN%' option path we MUST short-circuit, because
+    // _getMeasurement would call querySelector('20%') and throw on the
+    // invalid selector. For the sizer-element path we let _getMeasurement
+    // run normally and then probe the resolved sizer afterwards.
+    this._columnWidthPercent = null;
+    var optCW = this.options.columnWidth;
+    var literalMatch = typeof optCW === 'string' && optCW.match( PERCENT_RE );
+    if ( literalMatch ) {
+      this._columnWidthPercent = parseFloat( literalMatch[1] );
+      // measureColumns will replace this via the percent path below.
+      this.columnWidth = 0;
+    } else {
+      this._getMeasurement( 'columnWidth', 'outerWidth' );
+      if ( typeof optCW === 'string' || optCW instanceof HTMLElement ) {
+        var sizer = optCW instanceof HTMLElement
+          ? optCW
+          : this.element.querySelector( optCW );
+        if ( sizer ) {
+          this._columnWidthPercent = detectPercentWidth( sizer );
+        }
+      }
+    }
+
     this._getMeasurement( 'gutter', 'outerWidth' );
     this.measureColumns();
 
@@ -173,6 +270,25 @@
 
   proto.measureColumns = function() {
     this.getContainerWidth();
+
+    // ── #014 — percent columnWidth math fix (closes desandro/masonry#1006).
+    // When columnWidth originated from a percentage, derive cols directly
+    // from the percent literal — round(100/percent) — and recompute
+    // columnWidth as the per-column stride (item width + gutter) so the
+    // inter-column gutters fit inside the container. Stride formula:
+    //   cols * stride - gutter = containerWidth
+    //   ⇒ stride = (containerWidth + gutter) / cols
+    // Matches the convention from the standard branch below where
+    // `this.columnWidth += this.gutter` makes columnWidth a stride too.
+    // Replaces the buggy gutter-overshoot math, which drops a column
+    // whenever (containerWidth + gutter) / (columnWidth + gutter)
+    // overshoots an integer by more than 1px.
+    if ( this._columnWidthPercent && this.containerWidth ) {
+      this.cols = Math.max( 1, Math.round( 100 / this._columnWidthPercent ) );
+      this.columnWidth = ( this.containerWidth + this.gutter ) / this.cols;
+      return;
+    }
+
     // if columnWidth is 0, default to outerWidth of first item
     if ( !this.columnWidth ) {
       var firstItem = this.items[0];
