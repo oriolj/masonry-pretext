@@ -386,6 +386,42 @@ export interface ComputeLayoutOptions {
   pickColumn?: ( colGroup: number[] ) => number;
 }
 
+/**
+ * `<masonry-grid>` Custom Element wrapper (#034 / item Q). Ships as a
+ * separate bundle (`dist/masonry-grid-element.{js,min.js,mjs}`) so users
+ * of the imperative `new Masonry(...)` API don't pay for the wrapper bytes.
+ *
+ * Auto-constructs masonry on `connectedCallback`, destroys on
+ * `disconnectedCallback`. Reads options from `data-*` attributes:
+ * `column-width`, `gutter`, `item-selector`, `horizontal-order`,
+ * `fit-width`, `static`, `percent-position`. Defaults to
+ * `observeMutations: true` + `transitionDuration: 0` so the common
+ * dynamic-content case works without any wiring.
+ *
+ * For options that don't fit in attributes (callbacks like `pretextify`
+ * or `pickColumn`), set them via the `options` property:
+ *
+ * ```html
+ * <masonry-grid id="grid" column-width="240" gutter="16">...</masonry-grid>
+ * <script>
+ *   document.querySelector('#grid').options = {
+ *     pretextify: elem => ({ outerWidth: 240, outerHeight: 192 }),
+ *   };
+ * </script>
+ * ```
+ */
+export interface MasonryGridElement extends HTMLElement {
+  /** User-supplied option overrides. Setter re-constructs the masonry
+   *  instance with the new options. */
+  options: MasonryOptions | undefined;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'masonry-grid': MasonryGridElement;
+  }
+}
+
 /** Output shape from `Masonry.computeLayout`. */
 export interface ComputeLayoutResult {
   /** One position per input item, in input order. */

@@ -1246,6 +1246,47 @@ const esmConfig = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Web Component (#034 / item Q) — separate builds so consumers using
+// the imperative `new Masonry(...)` API don't pay for the wrapper bytes.
+// Each `<masonry-grid>` build is its own bundle that imports the same
+// shimmed deps as the main bundles.
+// ─────────────────────────────────────────────────────────────────────────────
+const wcEntryCjs = `
+'use strict';
+module.exports = require(${JSON.stringify(path.join(ROOT, 'masonry-grid-element.js'))});
+`;
+
+const wcEntryEsm = `
+import MasonryGridElement from ${JSON.stringify(path.join(ROOT, 'masonry-grid-element.js'))};
+export default MasonryGridElement;
+`;
+
+const wcIifeConfig = {
+  ...baseConfig,
+  stdin: {
+    contents: wcEntryCjs,
+    resolveDir: ROOT,
+    sourcefile: 'masonry-grid-element-pkgd-entry.cjs',
+    loader: 'js',
+  },
+  format: 'iife',
+  globalName: 'MasonryGridElement',
+};
+
+const wcEsmConfig = {
+  ...baseConfig,
+  stdin: {
+    contents: wcEntryEsm,
+    resolveDir: ROOT,
+    sourcefile: 'masonry-grid-element-esm-entry.mjs',
+    loader: 'js',
+  },
+  format: 'esm',
+  outfile: path.join(DIST, 'masonry-grid-element.mjs'),
+  minify: false,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Run unminified + minified builds in parallel. esbuild's `logLevel: 'info'`
 // already prints warnings inline, so we don't post-process them here.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1266,6 +1307,17 @@ await Promise.all([
   }),
   esbuild.build(cjsConfig),
   esbuild.build(esmConfig),
+  esbuild.build({
+    ...wcIifeConfig,
+    outfile: path.join(DIST, 'masonry-grid-element.js'),
+    minify: false,
+  }),
+  esbuild.build({
+    ...wcIifeConfig,
+    outfile: path.join(DIST, 'masonry-grid-element.min.js'),
+    minify: true,
+  }),
+  esbuild.build(wcEsmConfig),
 ]);
 
 const elapsed = performance.now() - t0;
@@ -1275,6 +1327,9 @@ const sizes = await Promise.all(
     'masonry.pkgd.min.js',
     'masonry.cjs',
     'masonry.mjs',
+    'masonry-grid-element.js',
+    'masonry-grid-element.min.js',
+    'masonry-grid-element.mjs',
   ].map(async (name) => [name, (await stat(path.join(DIST, name))).size]),
 );
 

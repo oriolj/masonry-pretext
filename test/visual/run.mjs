@@ -219,6 +219,22 @@ const cases = [
       { left: '120px', top: '30px' }, // discriminating: rightmost picker → col 2
     ],
   },
+  {
+    // <masonry-grid> Custom Element wrapper (#034 / item Q) — see
+    // test/visual/pages/web-component.html for the discriminator. The
+    // element auto-constructs masonry on connectedCallback, reads options
+    // from data-* attributes, ships observeMutations: true + transitionDuration: 0.
+    // Same 4-item / 3-col layout as basic-top-left default behavior.
+    name: 'web-component',
+    page: 'web-component.html',
+    container: '#web-component',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '0px',   top: '30px' },
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

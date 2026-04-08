@@ -6,7 +6,7 @@
  * by David DeSandro
  */
 "use strict";
-var Masonry = (() => {
+var MasonryGridElement = (() => {
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __commonJS = (cb, mod) => function __require() {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
@@ -1358,11 +1358,92 @@ var Masonry = (() => {
     }
   });
 
-  // masonry-pkgd-entry.cjs
-  var require_masonry_pkgd_entry = __commonJS({
-    "masonry-pkgd-entry.cjs"(exports, module) {
-      module.exports = require_masonry();
+  // masonry-grid-element.js
+  var require_masonry_grid_element = __commonJS({
+    "masonry-grid-element.js"(exports, module) {
+      /*!
+       * masonry-pretext <masonry-grid> Custom Element wrapper
+       * https://github.com/oriolj/masonry-pretext
+       * MIT License
+       */
+      (function(window2, factory) {
+        if (typeof define == "function" && define.amd) {
+          define(["masonry"], factory);
+        } else if (typeof module == "object" && module.exports) {
+          module.exports = factory(require_masonry());
+        } else {
+          window2.MasonryGridElement = factory(window2.Masonry);
+        }
+      })(typeof window !== "undefined" ? window : {}, function factory(Masonry) {
+        "use strict";
+        if (typeof HTMLElement === "undefined" || typeof customElements === "undefined") {
+          return null;
+        }
+        function MasonryGridElement() {
+          return Reflect.construct(HTMLElement, [], MasonryGridElement);
+        }
+        MasonryGridElement.prototype = Object.create(HTMLElement.prototype);
+        MasonryGridElement.prototype.constructor = MasonryGridElement;
+        MasonryGridElement.prototype.connectedCallback = function() {
+          if (this._masonry) return;
+          this._masonry = new Masonry(this, this._readOptions());
+        };
+        MasonryGridElement.prototype.disconnectedCallback = function() {
+          if (this._masonry) {
+            this._masonry.destroy();
+            this._masonry = null;
+          }
+        };
+        MasonryGridElement.prototype._readOptions = function() {
+          var opts = {
+            // Defaults that make the common dynamic-content case work without
+            // any wiring: observe DOM mutations + per-item resizes (#012 + #031),
+            // skip the 0.4s animated settle (#015 implies this).
+            observeMutations: true,
+            transitionDuration: 0
+          };
+          if (this.hasAttribute("column-width")) {
+            var cw = this.getAttribute("column-width");
+            var num = parseFloat(cw);
+            opts.columnWidth = isNaN(num) ? cw : num;
+          }
+          if (this.hasAttribute("gutter")) {
+            opts.gutter = parseFloat(this.getAttribute("gutter")) || 0;
+          }
+          if (this.hasAttribute("item-selector")) {
+            opts.itemSelector = this.getAttribute("item-selector");
+          }
+          if (this.hasAttribute("horizontal-order")) opts.horizontalOrder = true;
+          if (this.hasAttribute("fit-width")) opts.fitWidth = true;
+          if (this.hasAttribute("static")) opts.static = true;
+          if (this.hasAttribute("percent-position")) opts.percentPosition = true;
+          return Object.assign(opts, this._userOptions || {});
+        };
+        Object.defineProperty(MasonryGridElement.prototype, "options", {
+          get: function() {
+            return this._userOptions;
+          },
+          set: function(value) {
+            this._userOptions = value;
+            if (this._masonry) {
+              this._masonry.destroy();
+              this._masonry = new Masonry(this, this._readOptions());
+            }
+          }
+        });
+        if (!customElements.get("masonry-grid")) {
+          customElements.define("masonry-grid", MasonryGridElement);
+        }
+        return MasonryGridElement;
+      });
     }
   });
-  return require_masonry_pkgd_entry();
+
+  // masonry-grid-element-pkgd-entry.cjs
+  var require_masonry_grid_element_pkgd_entry = __commonJS({
+    "masonry-grid-element-pkgd-entry.cjs"(exports, module) {
+      module.exports = require_masonry_grid_element();
+    }
+  });
+  return require_masonry_grid_element_pkgd_entry();
 })();

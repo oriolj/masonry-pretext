@@ -931,23 +931,23 @@ var require_masonry = __commonJS({
       }
     })(typeof window !== "undefined" ? window : {}, function factory(Outlayer, getSize) {
       "use strict";
-      function Masonry2(element, options) {
+      function Masonry(element, options) {
         Outlayer.call(this, element, options);
       }
-      Masonry2.prototype = Object.create(Outlayer.prototype);
-      Masonry2.prototype.constructor = Masonry2;
-      Masonry2.namespace = "masonry";
-      Masonry2.defaults = Object.assign({}, Outlayer.defaults);
-      Masonry2.compatOptions = Object.assign({}, Outlayer.compatOptions);
-      Masonry2.data = Outlayer.data;
+      Masonry.prototype = Object.create(Outlayer.prototype);
+      Masonry.prototype.constructor = Masonry;
+      Masonry.namespace = "masonry";
+      Masonry.defaults = Object.assign({}, Outlayer.defaults);
+      Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions);
+      Masonry.data = Outlayer.data;
       function MasonryItem() {
         Outlayer.Item.apply(this, arguments);
       }
       MasonryItem.prototype = Object.create(Outlayer.Item.prototype);
       MasonryItem.prototype.constructor = MasonryItem;
-      Masonry2.Item = MasonryItem;
-      Masonry2.compatOptions.fitWidth = "isFitWidth";
-      var proto = Masonry2.prototype;
+      Masonry.Item = MasonryItem;
+      Masonry.compatOptions.fitWidth = "isFitWidth";
+      var proto = Masonry.prototype;
       var PERCENT_RE = /^\s*(\d*\.?\d+)\s*%\s*$/;
       function detectPercentWidth(elem) {
         var inline = elem.style && elem.style.width;
@@ -1323,7 +1323,7 @@ var require_masonry = __commonJS({
         this.getContainerWidth();
         return previousWidth != this.containerWidth;
       };
-      Masonry2.computeLayout = function(opts) {
+      Masonry.computeLayout = function(opts) {
         var items = opts.items || [];
         var gutter = opts.gutter || 0;
         var stamps = opts.stamps || [];
@@ -1372,14 +1372,95 @@ var require_masonry = __commonJS({
         }
         return out;
       };
-      return Masonry2;
+      return Masonry;
     });
   }
 });
 
-// masonry-esm-entry.mjs
-var import_masonry = __toESM(require_masonry(), 1);
-var masonry_esm_entry_default = import_masonry.default;
+// masonry-grid-element.js
+var require_masonry_grid_element = __commonJS({
+  "masonry-grid-element.js"(exports, module) {
+    /*!
+     * masonry-pretext <masonry-grid> Custom Element wrapper
+     * https://github.com/oriolj/masonry-pretext
+     * MIT License
+     */
+    (function(window2, factory) {
+      if (typeof define == "function" && define.amd) {
+        define(["masonry"], factory);
+      } else if (typeof module == "object" && module.exports) {
+        module.exports = factory(require_masonry());
+      } else {
+        window2.MasonryGridElement = factory(window2.Masonry);
+      }
+    })(typeof window !== "undefined" ? window : {}, function factory(Masonry) {
+      "use strict";
+      if (typeof HTMLElement === "undefined" || typeof customElements === "undefined") {
+        return null;
+      }
+      function MasonryGridElement2() {
+        return Reflect.construct(HTMLElement, [], MasonryGridElement2);
+      }
+      MasonryGridElement2.prototype = Object.create(HTMLElement.prototype);
+      MasonryGridElement2.prototype.constructor = MasonryGridElement2;
+      MasonryGridElement2.prototype.connectedCallback = function() {
+        if (this._masonry) return;
+        this._masonry = new Masonry(this, this._readOptions());
+      };
+      MasonryGridElement2.prototype.disconnectedCallback = function() {
+        if (this._masonry) {
+          this._masonry.destroy();
+          this._masonry = null;
+        }
+      };
+      MasonryGridElement2.prototype._readOptions = function() {
+        var opts = {
+          // Defaults that make the common dynamic-content case work without
+          // any wiring: observe DOM mutations + per-item resizes (#012 + #031),
+          // skip the 0.4s animated settle (#015 implies this).
+          observeMutations: true,
+          transitionDuration: 0
+        };
+        if (this.hasAttribute("column-width")) {
+          var cw = this.getAttribute("column-width");
+          var num = parseFloat(cw);
+          opts.columnWidth = isNaN(num) ? cw : num;
+        }
+        if (this.hasAttribute("gutter")) {
+          opts.gutter = parseFloat(this.getAttribute("gutter")) || 0;
+        }
+        if (this.hasAttribute("item-selector")) {
+          opts.itemSelector = this.getAttribute("item-selector");
+        }
+        if (this.hasAttribute("horizontal-order")) opts.horizontalOrder = true;
+        if (this.hasAttribute("fit-width")) opts.fitWidth = true;
+        if (this.hasAttribute("static")) opts.static = true;
+        if (this.hasAttribute("percent-position")) opts.percentPosition = true;
+        return Object.assign(opts, this._userOptions || {});
+      };
+      Object.defineProperty(MasonryGridElement2.prototype, "options", {
+        get: function() {
+          return this._userOptions;
+        },
+        set: function(value) {
+          this._userOptions = value;
+          if (this._masonry) {
+            this._masonry.destroy();
+            this._masonry = new Masonry(this, this._readOptions());
+          }
+        }
+      });
+      if (!customElements.get("masonry-grid")) {
+        customElements.define("masonry-grid", MasonryGridElement2);
+      }
+      return MasonryGridElement2;
+    });
+  }
+});
+
+// masonry-grid-element-esm-entry.mjs
+var import_masonry_grid_element = __toESM(require_masonry_grid_element(), 1);
+var masonry_grid_element_esm_entry_default = import_masonry_grid_element.default;
 export {
-  masonry_esm_entry_default as default
+  masonry_grid_element_esm_entry_default as default
 };

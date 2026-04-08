@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: &lt;masonry-grid&gt; (#034 / item Q)</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    /* The Custom Element renders as block-level by default. Apply the
+       same .container styles so the layout matches the other fixtures. */
+    masonry-grid#web-component {
+      display: block;
+      background: #EEE;
+      width: 180px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+  </style>
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for <masonry-grid> Custom Element wrapper
+    (#034 / item Q). The element auto-constructs masonry on
+    connectedCallback, reads options from data-* attributes, and ships
+    observeMutations: true + transitionDuration: 0 by default.
+
+    Layout: 4 items in a 3-col 180px container, columnWidth=60. The
+    expected positions match what `new Masonry(grid, {columnWidth: 60})`
+    would produce — proving the Custom Element correctly delegates to
+    the imperative API.
+  -->
+  <masonry-grid id="web-component" column-width="60" item-selector=".item">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </masonry-grid>
+
+  <!--
+    Load the Web Component IIFE bundle. It auto-defines `<masonry-grid>`
+    on the global customElements registry. The Custom Element constructor
+    runs on the next microtask after the script loads, so we wait two
+    rAF ticks before signaling __READY.
+  -->
+  <script src="../../../dist/masonry-grid-element.min.js"></script>
+  <script>
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        window.__READY = true;
+      });
+    });
+  </script>
+
+</body>
+</html>
