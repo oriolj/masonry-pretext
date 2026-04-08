@@ -157,3 +157,25 @@ If those four conditions are met, this pipeline gives you **CLS = 0.00 with no l
 ## Comparison to the Next.js example
 
 The [Next.js example in `../nextjs/`](../nextjs) does the same thing with a React Server Component instead of an Astro frontmatter. Same `Masonry.computeLayout` call, same client-side `initLayout: false + static: true` adoption, same CLS = 0.00 result. The RSC computes positions in pure Node, passes them as props (serialized as plain JSON), and a `'use client'` component receives them and constructs masonry with the SSR adoption combo. Pick whichever framework you're already using.
+
+## Astro integration subpath (#049 / D.8)
+
+For consumers using `<masonry-grid>` (the Custom Element wrapper from #034) inside Astro pages with View Transitions, the [`masonry-pretext/astro`](../../masonry-grid-element-astro.js) subpath provides a side-effect import that loads the element AND wires up an `astro:page-load` listener. The listener detects when Astro has swapped the document contents under a persisted `<masonry-grid>` element and reconstructs masonry with the new children.
+
+```astro
+---
+// src/components/MasonryGrid.astro
+---
+<masonry-grid {...Astro.props}>
+  <slot />
+</masonry-grid>
+
+<script>
+  // Side-effect import: loads the Custom Element + page-load listener.
+  // Place this once at app entry (or in any component that uses
+  // <masonry-grid>) — the registration is idempotent.
+  import 'masonry-pretext/astro';
+</script>
+```
+
+The integration is **purely additive** — it doesn't replace the SSR pipeline above. Use the SSR pipeline when you need CLS = 0.00 on first paint; use the `masonry-pretext/astro` subpath when you have dynamic-content `<masonry-grid>` elements that need to survive Astro's View Transitions cleanly.

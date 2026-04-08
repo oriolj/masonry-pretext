@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.48
+ * Masonry PACKAGED v5.0.0-dev.49
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -937,7 +937,7 @@ var require_masonry = __commonJS({
       Masonry2.prototype = Object.create(Outlayer.prototype);
       Masonry2.prototype.constructor = Masonry2;
       Masonry2.namespace = "masonry";
-      Masonry2.version = true ? "5.0.0-dev.48" : "source";
+      Masonry2.version = true ? "5.0.0-dev.49" : "source";
       Masonry2.fork = "masonry-pretext";
       Masonry2.defaults = Object.assign({}, Outlayer.defaults);
       Masonry2.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });

@@ -15,6 +15,33 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.49 — 2026-04-09 — `masonry-pretext/astro` subpath (D.8) — **All 12 D.* items shipped**
+
+> Tag: `v5.0.0-dev.49` · Improvement: [`049-astro-integration-subpath.md`](./improvements/049-astro-integration-subpath.md) · Closes downstream consumer ask **D.8** · **The full 12-item enacast-astro audit is now complete**
+
+A new `masonry-pretext/astro` package subpath provides a drop-in side-effect import that loads the `<masonry-grid>` Custom Element (#034) AND wires up an `astro:page-load` / `astro:after-swap` listener so the element correctly reinitializes after Astro View Transitions navigations.
+
+```astro
+---
+// src/components/MasonryGrid.astro
+---
+<masonry-grid {...Astro.props}>
+  <slot />
+</masonry-grid>
+
+<script>
+  import 'masonry-pretext/astro';
+</script>
+```
+
+**The problem this solves:** a persisted `<masonry-grid>` element (via Astro's `transition:persist` directive) survives a View Transitions navigation but its `connectedCallback` does NOT fire — Astro swaps the contents in-place, so the masonry instance ends up wired to the new page's items but with the old items array. The result is a stale layout until the user manually relayouts.
+
+The integration's listener walks every `<masonry-grid>` element on each `astro:page-load` / `astro:after-swap` event and uses an O(1) staleness heuristic (item count + first/last item identity) to detect swaps. Stale instances are destroyed and reconstructed; up-to-date ones are left alone.
+
+**Zero bytes added to imperative-API bundles** — the integration ships as two new separate bundles (`dist/masonry-astro.js` IIFE + `dist/masonry-astro.mjs` ESM) that consumers opt into via the new `./astro` package export. New `module-smoke.mjs` case verifies the bundle loads cleanly in Node SSR.
+
+🎉 **All 12 downstream consumer asks (D.1–D.12) are now landed.** The full enacast-astro audit from 2026-04-08 has been worked through end-to-end across improvements #038–#049: 4 Tier 1 (D.1, D.2, D.3, D.4), 4 Tier 2 (D.5, D.6, D.7, D.8), 4 Tier 3 (D.9, D.10, D.11, D.12).
+
 ### v5.0.0-dev.48 — 2026-04-09 — `msnry.diagnose()` (D.11)
 
 > Tag: `v5.0.0-dev.48` · Improvement: [`048-diagnose.md`](./improvements/048-diagnose.md) · Closes downstream consumer ask **D.11**

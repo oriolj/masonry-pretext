@@ -1,6 +1,6 @@
 {
   "name": "masonry-pretext",
-  "version": "5.0.0-dev.48",
+  "version": "5.0.0-dev.49",
   "description": "Cascading grid layout library — modernized fork of masonry-layout with reflow-free text measurement via pretext.",
   "main": "./dist/masonry.cjs",
   "module": "./dist/masonry.mjs",
@@ -21,6 +21,10 @@
       "default": "./dist/masonry-grid-element.min.js"
     },
     "./element/unminified": "./dist/masonry-grid-element.js",
+    "./astro": {
+      "import": "./dist/masonry-astro.mjs",
+      "default": "./dist/masonry-astro.js"
+    },
     "./package.json": "./package.json"
   },
   "sideEffects": false,
@@ -68,6 +72,7 @@
     "dist",
     "masonry.js",
     "masonry.d.ts",
-    "masonry-grid-element.js"
+    "masonry-grid-element.js",
+    "masonry-grid-element-astro.js"
   ]
 }

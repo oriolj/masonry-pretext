@@ -1239,6 +1239,23 @@ import MasonryGridElement from ${JSON.stringify(path.join(ROOT, 'masonry-grid-el
 export default MasonryGridElement;
 `;
 
+// #049 / D.8 — Astro integration entry. Side-effect import: loads
+// the Custom Element AND wires up the astro:page-load listener.
+// Re-exports the MasonryGridElement default so esbuild doesn't
+// tree-shake the imports under `sideEffects: false`.
+const astroEntryCjs = `
+'use strict';
+var MasonryGridElement = require(${JSON.stringify(path.join(ROOT, 'masonry-grid-element.js'))});
+require(${JSON.stringify(path.join(ROOT, 'masonry-grid-element-astro.js'))});
+module.exports = MasonryGridElement;
+`;
+
+const astroEntryEsm = `
+import MasonryGridElement from ${JSON.stringify(path.join(ROOT, 'masonry-grid-element.js'))};
+import ${JSON.stringify(path.join(ROOT, 'masonry-grid-element-astro.js'))};
+export default MasonryGridElement;
+`;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Run all seven builds in parallel.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1295,6 +1312,22 @@ await Promise.all([
     format: 'esm',
     outfile: path.join(DIST, 'masonry-grid-element.mjs'),
   })),
+  // #049 / D.8 — Astro integration: side-effect bundle that
+  // loads the Custom Element + the astro:page-load listener.
+  esbuild.build(makeBuildConfig({
+    entryContents: astroEntryCjs,
+    sourcefile: 'masonry-astro-entry.cjs',
+    format: 'iife',
+    globalName: 'MasonryAstro',
+    outfile: path.join(DIST, 'masonry-astro.js'),
+    minify: true,
+  })),
+  esbuild.build(makeBuildConfig({
+    entryContents: astroEntryEsm,
+    sourcefile: 'masonry-astro-entry.mjs',
+    format: 'esm',
+    outfile: path.join(DIST, 'masonry-astro.mjs'),
+  })),
 ]);
 
 const elapsed = performance.now() - t0;
@@ -1307,6 +1340,8 @@ const sizes = await Promise.all(
     'masonry-grid-element.js',
     'masonry-grid-element.min.js',
     'masonry-grid-element.mjs',
+    'masonry-astro.js',
+    'masonry-astro.mjs',
   ].map(async (name) => [name, (await stat(path.join(DIST, name))).size]),
 );
 

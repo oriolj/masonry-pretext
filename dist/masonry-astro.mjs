@@ -5,15 +5,35 @@
  * MIT License
  * by David DeSandro
  */
-"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 
 // ev-emitter-shim:ev-emitter-shim
 var require_ev_emitter_shim = __commonJS({
-  "ev-emitter-shim:ev-emitter-shim"(exports2, module2) {
+  "ev-emitter-shim:ev-emitter-shim"(exports, module) {
     "use strict";
     function EvEmitter() {
     }
@@ -42,13 +62,13 @@ var require_ev_emitter_shim = __commonJS({
       }
       return this;
     };
-    module2.exports = EvEmitter;
+    module.exports = EvEmitter;
   }
 });
 
 // get-size-shim:get-size-shim
 var require_get_size_shim = __commonJS({
-  "get-size-shim:get-size-shim"(exports2, module2) {
+  "get-size-shim:get-size-shim"(exports, module) {
     "use strict";
     var GS_PROPS = [
       "paddingLeft",
@@ -84,14 +104,14 @@ var require_get_size_shim = __commonJS({
       size.outerHeight = size.height + size.marginTop + size.marginBottom;
       return size;
     }
-    module2.exports = getSize;
+    module.exports = getSize;
   }
 });
 
 // desandro-matches-selector-shim:desandro-matches-selector-shim
 var require_desandro_matches_selector_shim = __commonJS({
-  "desandro-matches-selector-shim:desandro-matches-selector-shim"(exports2, module2) {
-    module2.exports = function(elem, selector) {
+  "desandro-matches-selector-shim:desandro-matches-selector-shim"(exports, module) {
+    module.exports = function(elem, selector) {
       return elem.matches(selector);
     };
   }
@@ -99,7 +119,7 @@ var require_desandro_matches_selector_shim = __commonJS({
 
 // node_modules/fizzy-ui-utils/utils.js
 var require_utils = __commonJS({
-  "node_modules/fizzy-ui-utils/utils.js"(exports2, module2) {
+  "node_modules/fizzy-ui-utils/utils.js"(exports, module) {
     (function(window2, factory) {
       if (typeof define == "function" && define.amd) {
         define([
@@ -107,8 +127,8 @@ var require_utils = __commonJS({
         ], function(matchesSelector) {
           return factory(window2, matchesSelector);
         });
-      } else if (typeof module2 == "object" && module2.exports) {
-        module2.exports = factory(
+      } else if (typeof module == "object" && module.exports) {
+        module.exports = factory(
           window2,
           require_desandro_matches_selector_shim()
         );
@@ -211,7 +231,7 @@ var require_utils = __commonJS({
 
 // node_modules/outlayer/item.js
 var require_item = __commonJS({
-  "node_modules/outlayer/item.js"(exports2, module2) {
+  "node_modules/outlayer/item.js"(exports, module) {
     (function(window2, factory) {
       if (typeof define == "function" && define.amd) {
         define(
@@ -221,8 +241,8 @@ var require_item = __commonJS({
           ],
           factory
         );
-      } else if (typeof module2 == "object" && module2.exports) {
-        module2.exports = factory(
+      } else if (typeof module == "object" && module.exports) {
+        module.exports = factory(
           require_ev_emitter_shim(),
           require_get_size_shim()
         );
@@ -483,7 +503,7 @@ var require_item = __commonJS({
 
 // node_modules/outlayer/outlayer.js
 var require_outlayer = __commonJS({
-  "node_modules/outlayer/outlayer.js"(exports2, module2) {
+  "node_modules/outlayer/outlayer.js"(exports, module) {
     /*!
      * Outlayer v2.1.1
      * the brains and guts of a layout library
@@ -503,8 +523,8 @@ var require_outlayer = __commonJS({
             return factory(window2, EvEmitter, getSize, utils, Item);
           }
         );
-      } else if (typeof module2 == "object" && module2.exports) {
-        module2.exports = factory(
+      } else if (typeof module == "object" && module.exports) {
+        module.exports = factory(
           window2,
           require_ev_emitter_shim(),
           require_get_size_shim(),
@@ -881,7 +901,7 @@ var require_outlayer = __commonJS({
 
 // masonry.js
 var require_masonry = __commonJS({
-  "masonry.js"(exports2, module2) {
+  "masonry.js"(exports, module) {
     /*!
      * Masonry v4.2.2
      * Cascading grid layout library
@@ -898,8 +918,8 @@ var require_masonry = __commonJS({
           ],
           factory
         );
-      } else if (typeof module2 == "object" && module2.exports) {
-        module2.exports = factory(
+      } else if (typeof module == "object" && module.exports) {
+        module.exports = factory(
           require_outlayer(),
           require_get_size_shim()
         );
@@ -1588,6 +1608,97 @@ var require_masonry = __commonJS({
   }
 });
 
-// masonry-cjs-entry.cjs
-module.exports = require_masonry();
-//# sourceMappingURL=masonry.cjs.map
+// masonry-grid-element.js
+var require_masonry_grid_element = __commonJS({
+  "masonry-grid-element.js"(exports, module) {
+    /*!
+     * masonry-pretext <masonry-grid> Custom Element wrapper
+     * https://github.com/oriolj/masonry-pretext
+     * MIT License
+     */
+    (function(window2, factory) {
+      if (typeof define == "function" && define.amd) {
+        define(["masonry"], factory);
+      } else if (typeof module == "object" && module.exports) {
+        module.exports = factory(require_masonry());
+      } else {
+        window2.MasonryGridElement = factory(window2.Masonry);
+      }
+    })(typeof window !== "undefined" ? window : {}, function factory(Masonry) {
+      "use strict";
+      if (typeof HTMLElement === "undefined" || typeof customElements === "undefined") {
+        return null;
+      }
+      function MasonryGridElement2() {
+        return Reflect.construct(HTMLElement, [], MasonryGridElement2);
+      }
+      MasonryGridElement2.prototype = Object.create(HTMLElement.prototype);
+      MasonryGridElement2.prototype.constructor = MasonryGridElement2;
+      MasonryGridElement2.prototype.connectedCallback = function() {
+        if (this._masonry) return;
+        this._masonry = new Masonry(this, this._readOptions());
+      };
+      MasonryGridElement2.prototype.disconnectedCallback = function() {
+        if (this._masonry) {
+          this._masonry.destroy();
+          this._masonry = null;
+        }
+      };
+      MasonryGridElement2.prototype._readOptions = function() {
+        var opts = {
+          // Defaults that make the common dynamic-content case work without
+          // any wiring: observe DOM mutations + per-item resizes (#012 + #031),
+          // skip the 0.4s animated settle (#015 implies this).
+          observeMutations: true,
+          transitionDuration: 0
+        };
+        if (this.hasAttribute("column-width")) {
+          var cw = this.getAttribute("column-width");
+          var num = parseFloat(cw);
+          opts.columnWidth = isNaN(num) ? cw : num;
+        }
+        if (this.hasAttribute("gutter")) {
+          opts.gutter = parseFloat(this.getAttribute("gutter")) || 0;
+        }
+        if (this.hasAttribute("item-selector")) {
+          opts.itemSelector = this.getAttribute("item-selector");
+        }
+        if (this.hasAttribute("horizontal-order")) opts.horizontalOrder = true;
+        if (this.hasAttribute("fit-width")) opts.fitWidth = true;
+        if (this.hasAttribute("static")) opts.static = true;
+        if (this.hasAttribute("percent-position")) opts.percentPosition = true;
+        return Object.assign(opts, this._userOptions || {});
+      };
+      Object.defineProperty(MasonryGridElement2.prototype, "options", {
+        get: function() {
+          return this._userOptions;
+        },
+        set: function(value) {
+          if (value === this._userOptions) return;
+          this._userOptions = value;
+          if (this._masonry) {
+            this._masonry.destroy();
+            this._masonry = new Masonry(this, this._readOptions());
+          }
+        }
+      });
+      Object.defineProperty(MasonryGridElement2.prototype, "masonry", {
+        get: function() {
+          return this._masonry;
+        }
+      });
+      if (!customElements.get("masonry-grid")) {
+        customElements.define("masonry-grid", MasonryGridElement2);
+      }
+      return MasonryGridElement2;
+    });
+  }
+});
+
+// masonry-astro-entry.mjs
+var import_masonry_grid_element = __toESM(require_masonry_grid_element(), 1);
+var masonry_astro_entry_default = import_masonry_grid_element.default;
+export {
+  masonry_astro_entry_default as default
+};
+//# sourceMappingURL=masonry-astro.mjs.map

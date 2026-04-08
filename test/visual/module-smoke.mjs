@@ -79,4 +79,24 @@ try {
   failed = true;
 }
 
+console.log('');
+
+// Astro subpath smoke (#049 / D.8) ───────────────────────────────────────────
+// The astro bundle is a side-effect import that loads the
+// `<masonry-grid>` Custom Element AND wires up the astro:page-load
+// listener. In Node SSR contexts, the Custom Element factory bails
+// (no HTMLElement / customElements globals) and returns null, so
+// the bundle's default export is null. The test asserts the bundle
+// LOADS without throwing — that's the SSR-safety contract.
+try {
+  const astroPath = path.join(ROOT, 'dist/masonry-astro.mjs');
+  const mod = await import(pathToFileURL(astroPath).href);
+  console.log('✓ dist/masonry-astro.mjs imports cleanly (SSR-safe)');
+  console.log(`  default export type: ${typeof mod.default} (null in SSR — expected)`);
+} catch (err) {
+  console.error('✗ dist/masonry-astro.mjs failed ESM import:');
+  console.error(`  ${err.message}`);
+  failed = true;
+}
+
 process.exit(failed ? 1 : 0);
