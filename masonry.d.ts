@@ -453,8 +453,16 @@ export interface ComputeLayoutOptions {
  */
 export interface MasonryGridElement extends HTMLElement {
   /** User-supplied option overrides. Setter re-constructs the masonry
-   *  instance with the new options. */
+   *  instance with the new options — destroys the existing one (loses
+   *  `colYs`, observer state, `.on()` handlers). For incremental tweaks
+   *  use `.masonry.option({ ... })` instead. */
   options: MasonryOptions | undefined;
+
+  /** Read-only access to the underlying Masonry instance. Available
+   *  after `connectedCallback`. Use this for incremental updates that
+   *  shouldn't trigger a full destroy/re-construct (the `options`
+   *  setter does). */
+  readonly masonry: Masonry | undefined;
 }
 
 declare global {

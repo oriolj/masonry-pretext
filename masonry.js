@@ -44,15 +44,13 @@
   Masonry.prototype.constructor = Masonry;
   Masonry.namespace = 'masonry';
   Masonry.defaults = Object.assign( {}, Outlayer.defaults );
-  Masonry.compatOptions = Object.assign( {}, Outlayer.compatOptions );
+  // isFitWidth → fitWidth: legacy option name kept working alongside the new one.
+  Masonry.compatOptions = Object.assign( {}, Outlayer.compatOptions, { fitWidth: 'isFitWidth' });
   Masonry.data = Outlayer.data;
   function MasonryItem() { Outlayer.Item.apply( this, arguments ); }
   MasonryItem.prototype = Object.create( Outlayer.Item.prototype );
   MasonryItem.prototype.constructor = MasonryItem;
   Masonry.Item = MasonryItem;
-
-  // isFitWidth -> fitWidth
-  Masonry.compatOptions.fitWidth = 'isFitWidth';
 
   var proto = Masonry.prototype;
 
@@ -60,37 +58,25 @@
   // Convenience layer over the existing #009 `pretextify` callback. The
   // user supplies a measurement function + font + optional text accessor;
   // masonry constructs the pretextify closure internally with a built-in
-  // WeakMap cache, removing ~10-20 lines of boilerplate per usage.
+  // WeakMap cache. If both `pretextify` and `pretextOptions` are set,
+  // `pretextify` wins.
   //
-  // Example:
-  //
-  //   import { prepare, layout } from '@chenglou/pretext';
-  //   new Masonry(grid, {
-  //     columnWidth: 280,
-  //     pretextOptions: {
-  //       measure: function(text, font, maxWidth) {
-  //         var prepared = prepare(text, font);
-  //         return layout(prepared, maxWidth, 24).height;
-  //       },
-  //       font: '16px/1.5 Inter, sans-serif',
-  //       text: function(elem) { return elem.dataset.text || elem.textContent; },
-  //       padding: 24, // optional, added to the measured height
-  //     },
-  //   });
-  //
-  // If both `pretextify` and `pretextOptions` are set, `pretextify` wins.
+  // The closure reads `options.columnWidth` AT CALL TIME (not at build
+  // time) so the cache stays correct across `instance.option({columnWidth:
+  // ...})` calls. Cache entries with stale columnWidth are detected via
+  // a per-entry width tag and recomputed when stale.
   function buildPretextifyFromOptions( options ) {
     var po = options.pretextOptions;
     if ( !po || !po.measure ) return null;
-    var cw = options.columnWidth;
     var cache = new WeakMap();
     var padding = po.padding || 0;
     var getText = po.text || function( elem ) { return elem.textContent; };
     return function pretextify( elem ) {
+      var cw = options.columnWidth;
       var cached = cache.get( elem );
-      if ( cached ) return cached;
+      if ( cached && cached.cw === cw ) return cached;
       var height = po.measure( getText( elem ), po.font, cw );
-      var size = { outerWidth: cw, outerHeight: height + padding };
+      var size = { outerWidth: cw, outerHeight: height + padding, cw: cw };
       cache.set( elem, size );
       return size;
     };
@@ -190,24 +176,11 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────
-  // Pure-math placement layer (#016 / § engine-adapter split / Phase 1
-  // of PRETEXT_SSR_ROADMAP.md). These functions take pre-measured sizes
-  // and numeric state, and return placement decisions — NO `this`, NO
-  // DOM, NO option lookups. They are called from the DOM-using
-  // `proto._getItemLayoutPosition` adapter, AND will be called from
-  // `Masonry.computeLayout` in Phase 2 for pure-Node SSR pre-computation.
-  //
-  // The design rule: any state the placement decision needs is passed in
-  // as a function argument. `placeItem` mutates `state.colYs` in place
-  // (matches the existing in-place semantics) and writes back the new
-  // `horizontalColIndex` to `state.horizontalColIndex` so the caller
-  // re-reads it after the call. The caller chooses whether `state` is
-  // a wrapper around a Masonry instance (DOM adapter) or a fresh object
-  // built from server-side data (Phase 2 `computeLayout`).
-  //
-  // Behavior is byte-for-byte identical to the inline implementation
-  // these functions replaced — verified by all 9 existing visual
-  // fixtures still passing against their unchanged screenshot baselines.
+  // Pure-math placement layer (#016). Called from both
+  // `proto._getItemLayoutPosition` (DOM adapter) and `Masonry.computeLayout`
+  // (pure-Node SSR pre-computation, #017) so server and client share the
+  // same packing math. No `this`, no DOM, no option lookups — all state
+  // is passed in via the `state` arg, which `placeItem` mutates in place.
   // ─────────────────────────────────────────────────────────────────────
 
   /**
@@ -329,12 +302,8 @@
     };
   }
 
-  // Shared math helpers used by BOTH `proto.*` (instance layout) AND
-  // `Masonry.computeLayout` (Phase 2 / SSR pre-computation). These were
-  // duplicated across the two call sites in #017 — extracting them here
-  // makes drift between server and client mathematically impossible.
-  // The byte-for-byte gate (`test/visual/compute-layout.mjs`) becomes
-  // tautologically true rather than empirically verified.
+  // Shared between `proto.*` and `Masonry.computeLayout` so SSR/browser
+  // math stays bit-identical without per-call duplication.
 
   /**
    * Derive `cols` and per-column stride from raw inputs. Mirrors the
@@ -405,11 +374,12 @@
     if ( this.options.static ) {
       this.options.transitionDuration = 0;
     }
-    // #035 — build the pretextify closure from `pretextOptions` if the
-    // user took the shorthand path. Skipped if they already supplied a
-    // pretextify callback directly (`pretextify` wins).
+    // #035 — build the pretextify closure from `pretextOptions`, stored
+    // on the instance (not on this.options) so we don't clobber whatever
+    // the user passed. _getItemLayoutPosition reads
+    // `this.options.pretextify || this._builtPretextify`.
     if ( !this.options.pretextify && this.options.pretextOptions ) {
-      this.options.pretextify = buildPretextifyFromOptions( this.options );
+      this._builtPretextify = buildPretextifyFromOptions( this.options );
     }
     baseCreate.call( this );
     // ── #010 — fonts.ready first-paint gate (skipped in static mode) ──
@@ -483,6 +453,11 @@
       var self3 = this;
       var pendingMutationRaf = null;
       this._mutationObserver = new MutationObserver( function() {
+        // Skip mutations caused by masonry's own remove()/appended()/
+        // prepended() — Item.removeElem calls parentNode.removeChild
+        // which fires childList, otherwise we'd schedule a spurious
+        // second relayout immediately after the user's API call.
+        if ( self3._ignoreMutations ) return;
         if ( pendingMutationRaf !== null ) return;
         pendingMutationRaf = requestAnimationFrame( function() {
           pendingMutationRaf = null;
@@ -520,7 +495,9 @@
   };
 
   // Unobserve removed items so the ResizeObserver doesn't keep their
-  // elements alive after they're detached from the DOM.
+  // elements alive after they're detached from the DOM. Also gates the
+  // MutationObserver re-entry guard so #031's observer doesn't schedule
+  // a spurious second relayout when removeChild fires childList.
   var baseRemove = proto.remove;
   proto.remove = function( elems ) {
     if ( this._resizeObserver ) {
@@ -529,7 +506,24 @@
         this._resizeObserver.unobserve( removeItems[i].element );
       }
     }
-    return baseRemove.call( this, elems );
+    this._ignoreMutations = true;
+    try { return baseRemove.call( this, elems ); }
+    finally { this._ignoreMutations = false; }
+  };
+
+  // Same re-entry guard for the appended/prepended/addItems API surfaces —
+  // they call appendChild/insertBefore which fire childList.
+  var baseAppended = proto.appended;
+  proto.appended = function( elems ) {
+    this._ignoreMutations = true;
+    try { return baseAppended.call( this, elems ); }
+    finally { this._ignoreMutations = false; }
+  };
+  var basePrepended = proto.prepended;
+  proto.prepended = function( elems ) {
+    this._ignoreMutations = true;
+    try { return basePrepended.call( this, elems ); }
+    finally { this._ignoreMutations = false; }
   };
 
   // Disconnect ResizeObserver (#012) and MutationObserver (#031) on destroy.
@@ -623,11 +617,15 @@
   proto.getContainerWidth = function() {
     // container is parent if fit width
     var isFitWidth = this._getOption('fitWidth');
-    var container = isFitWidth ? this.element.parentNode : this.element;
-    // check that this.size and size are there
-    // IE8 triggers resize on body size change, so they might not be
+    var parent = this.element.parentNode;
+    var container = isFitWidth ? parent : this.element;
     var size = getSize( container );
     this.containerWidth = size && size.innerWidth;
+    // #033 — cache parent.clientWidth here while layout is already
+    // being measured. Reading it later inside _getContainerFitWidth
+    // (after items have been positioned) would force a second sync
+    // reflow on every relayout.
+    this._parentClientWidth = parent ? parent.clientWidth : 0;
   };
 
   // The DOM adapter (#016 / Phase 1). Resolves item size via pretextify
@@ -644,7 +642,7 @@
     // size, use it as `item.size` and skip `item.getSize()` — which forces a
     // DOM reflow. Library-agnostic; works with @chenglou/pretext or any
     // precomputed sizes. See improvements/009-pretext-integration.md.
-    var pretextify = this.options.pretextify;
+    var pretextify = this.options.pretextify || this._builtPretextify;
     var pretextSize = pretextify && pretextify( item.element );
     if ( pretextSize ) {
       item.size = pretextSize;
@@ -732,16 +730,12 @@
 
   proto._getContainerFitWidth = function() {
     var fitWidth = computeFitContainerWidth( this.cols, this.colYs, this.columnWidth, this.gutter );
-    // #033 / item J — cap fitWidth at parent's clientWidth so a narrow
-    // parent (e.g., one with `max-width`) doesn't get a wider grid that
-    // overflows. Closes desandro/masonry#1129. clientWidth respects
-    // max-width on the parent transitively because the layout engine
-    // applies the constraint before computing client dimensions.
-    var parent = this.element.parentNode;
-    if ( parent && typeof parent.clientWidth === 'number' && parent.clientWidth > 0 ) {
-      return Math.min( fitWidth, parent.clientWidth );
-    }
-    return fitWidth;
+    // #033 — cap at the parent's clientWidth (cached in getContainerWidth
+    // to avoid a second reflow). Without the cap a narrow parent — e.g.
+    // one with max-width — would get a wider grid that overflows.
+    return this._parentClientWidth > 0
+      ? Math.min( fitWidth, this._parentClientWidth )
+      : fitWidth;
   };
 
   proto.needsResizeLayout = function() {

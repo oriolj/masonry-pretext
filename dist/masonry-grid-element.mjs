@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.35
+ * Masonry PACKAGED v5.0.0-dev.36
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -108,9 +108,9 @@ var require_get_size_shim = __commonJS({
   }
 });
 
-// matches-selector-shim:matches-selector-shim
-var require_matches_selector_shim = __commonJS({
-  "matches-selector-shim:matches-selector-shim"(exports, module) {
+// desandro-matches-selector-shim:desandro-matches-selector-shim
+var require_desandro_matches_selector_shim = __commonJS({
+  "desandro-matches-selector-shim:desandro-matches-selector-shim"(exports, module) {
     module.exports = function(elem, selector) {
       return elem.matches(selector);
     };
@@ -130,7 +130,7 @@ var require_utils = __commonJS({
       } else if (typeof module == "object" && module.exports) {
         module.exports = factory(
           window2,
-          require_matches_selector_shim()
+          require_desandro_matches_selector_shim()
         );
       } else {
         window2.fizzyUIUtils = factory(
@@ -938,7 +938,7 @@ var require_masonry = __commonJS({
       Masonry.prototype.constructor = Masonry;
       Masonry.namespace = "masonry";
       Masonry.defaults = Object.assign({}, Outlayer.defaults);
-      Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions);
+      Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
       Masonry.data = Outlayer.data;
       function MasonryItem() {
         Outlayer.Item.apply(this, arguments);
@@ -946,22 +946,21 @@ var require_masonry = __commonJS({
       MasonryItem.prototype = Object.create(Outlayer.Item.prototype);
       MasonryItem.prototype.constructor = MasonryItem;
       Masonry.Item = MasonryItem;
-      Masonry.compatOptions.fitWidth = "isFitWidth";
       var proto = Masonry.prototype;
       function buildPretextifyFromOptions(options) {
         var po = options.pretextOptions;
         if (!po || !po.measure) return null;
-        var cw = options.columnWidth;
         var cache = /* @__PURE__ */ new WeakMap();
         var padding = po.padding || 0;
         var getText = po.text || function(elem) {
           return elem.textContent;
         };
         return function pretextify(elem) {
+          var cw = options.columnWidth;
           var cached = cache.get(elem);
-          if (cached) return cached;
+          if (cached && cached.cw === cw) return cached;
           var height = po.measure(getText(elem), po.font, cw);
-          var size = { outerWidth: cw, outerHeight: height + padding };
+          var size = { outerWidth: cw, outerHeight: height + padding, cw };
           cache.set(elem, size);
           return size;
         };
@@ -1135,7 +1134,7 @@ var require_masonry = __commonJS({
           this.options.transitionDuration = 0;
         }
         if (!this.options.pretextify && this.options.pretextOptions) {
-          this.options.pretextify = buildPretextifyFromOptions(this.options);
+          this._builtPretextify = buildPretextifyFromOptions(this.options);
         }
         baseCreate.call(this);
         if (!this.options.static && typeof document !== "undefined" && document.fonts && document.fonts.status !== "loaded") {
@@ -1180,6 +1179,7 @@ var require_masonry = __commonJS({
           var self3 = this;
           var pendingMutationRaf = null;
           this._mutationObserver = new MutationObserver(function() {
+            if (self3._ignoreMutations) return;
             if (pendingMutationRaf !== null) return;
             pendingMutationRaf = requestAnimationFrame(function() {
               pendingMutationRaf = null;
@@ -1214,7 +1214,30 @@ var require_masonry = __commonJS({
             this._resizeObserver.unobserve(removeItems[i].element);
           }
         }
-        return baseRemove.call(this, elems);
+        this._ignoreMutations = true;
+        try {
+          return baseRemove.call(this, elems);
+        } finally {
+          this._ignoreMutations = false;
+        }
+      };
+      var baseAppended = proto.appended;
+      proto.appended = function(elems) {
+        this._ignoreMutations = true;
+        try {
+          return baseAppended.call(this, elems);
+        } finally {
+          this._ignoreMutations = false;
+        }
+      };
+      var basePrepended = proto.prepended;
+      proto.prepended = function(elems) {
+        this._ignoreMutations = true;
+        try {
+          return basePrepended.call(this, elems);
+        } finally {
+          this._ignoreMutations = false;
+        }
       };
       var baseDestroy = proto.destroy;
       proto.destroy = function() {
@@ -1268,12 +1291,14 @@ var require_masonry = __commonJS({
       };
       proto.getContainerWidth = function() {
         var isFitWidth = this._getOption("fitWidth");
-        var container = isFitWidth ? this.element.parentNode : this.element;
+        var parent = this.element.parentNode;
+        var container = isFitWidth ? parent : this.element;
         var size = getSize(container);
         this.containerWidth = size && size.innerWidth;
+        this._parentClientWidth = parent ? parent.clientWidth : 0;
       };
       proto._getItemLayoutPosition = function(item) {
-        var pretextify = this.options.pretextify;
+        var pretextify = this.options.pretextify || this._builtPretextify;
         var pretextSize = pretextify && pretextify(item.element);
         if (pretextSize) {
           item.size = pretextSize;
@@ -1333,11 +1358,7 @@ var require_masonry = __commonJS({
       };
       proto._getContainerFitWidth = function() {
         var fitWidth = computeFitContainerWidth(this.cols, this.colYs, this.columnWidth, this.gutter);
-        var parent = this.element.parentNode;
-        if (parent && typeof parent.clientWidth === "number" && parent.clientWidth > 0) {
-          return Math.min(fitWidth, parent.clientWidth);
-        }
-        return fitWidth;
+        return this._parentClientWidth > 0 ? Math.min(fitWidth, this._parentClientWidth) : fitWidth;
       };
       proto.needsResizeLayout = function() {
         var previousWidth = this.containerWidth;
@@ -1464,11 +1485,17 @@ var require_masonry_grid_element = __commonJS({
           return this._userOptions;
         },
         set: function(value) {
+          if (value === this._userOptions) return;
           this._userOptions = value;
           if (this._masonry) {
             this._masonry.destroy();
             this._masonry = new Masonry(this, this._readOptions());
           }
+        }
+      });
+      Object.defineProperty(MasonryGridElement2.prototype, "masonry", {
+        get: function() {
+          return this._masonry;
         }
       });
       if (!customElements.get("masonry-grid")) {

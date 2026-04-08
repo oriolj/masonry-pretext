@@ -103,13 +103,25 @@ MasonryGridElement.prototype._readOptions = function() {
 Object.defineProperty( MasonryGridElement.prototype, 'options', {
   get: function() { return this._userOptions; },
   set: function( value ) {
+    if ( value === this._userOptions ) return;
     this._userOptions = value;
     if ( this._masonry ) {
-      // Re-construct with the new options.
+      // Re-construct with the new options. NOTE: this destroys the
+      // existing instance — observers re-attach, colYs is reset, any
+      // .on() handlers are lost. For incremental tweaks (e.g. just
+      // changing a callback), prefer `el.masonry.option({ ... })` on
+      // the underlying instance, accessed via the `.masonry` getter.
       this._masonry.destroy();
       this._masonry = new Masonry( this, this._readOptions() );
     }
   },
+});
+
+// Public read-only access to the underlying Masonry instance, for users
+// who need to call methods that bypass the destroy/re-construct cycle of
+// the `options` setter (`layout()`, `appended()`, `option({ ... })`, etc.).
+Object.defineProperty( MasonryGridElement.prototype, 'masonry', {
+  get: function() { return this._masonry; },
 });
 
 if ( !customElements.get( 'masonry-grid' ) ) {

@@ -1042,19 +1042,26 @@ const depFilePatchesPlugin = {
 // package. The shim is functionally equivalent (same `(elem, selector) =>
 // boolean` signature) and gets bundled in place of the real module.
 // ─────────────────────────────────────────────────────────────────────────────
-const matchesSelectorShimPlugin = {
-  name: 'matches-selector-shim',
-  setup(build) {
-    build.onResolve({ filter: /^desandro-matches-selector$/ }, () => ({
-      path: 'matches-selector-shim',
-      namespace: 'matches-selector-shim',
-    }));
-    build.onLoad({ filter: /.*/, namespace: 'matches-selector-shim' }, () => ({
-      contents: 'module.exports = function(elem, selector) { return elem.matches(selector); };',
-      loader: 'js',
-    }));
-  },
-};
+// Factory: build a "shim" esbuild plugin that intercepts the resolution of
+// a bundled package name and substitutes inline source. Used by #003
+// (matches-selector), #027 (get-size), and #030 (ev-emitter) — all three
+// replace upstream packages with shorter inlined re-implementations.
+function makeShimPlugin( pkgName, contents ) {
+  const ns = pkgName + '-shim';
+  return {
+    name: ns,
+    setup( build ) {
+      const filter = new RegExp( '^' + pkgName.replace( /[-/\\^$*+?.()|[\]{}]/g, '\\$&' ) + '$' );
+      build.onResolve({ filter }, () => ({ path: ns, namespace: ns }));
+      build.onLoad({ filter: /.*/, namespace: ns }, () => ({ contents, loader: 'js' }));
+    },
+  };
+}
+
+const matchesSelectorShimPlugin = makeShimPlugin(
+  'desandro-matches-selector',
+  'module.exports = function(elem, selector) { return elem.matches(selector); };',
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // `ev-emitter` shim plugin (improvement #030 / item D)
@@ -1106,19 +1113,7 @@ proto.emitEvent = function( eventName, args ) {
 module.exports = EvEmitter;
 `;
 
-const evEmitterShimPlugin = {
-  name: 'ev-emitter-shim',
-  setup(build) {
-    build.onResolve({ filter: /^ev-emitter$/ }, () => ({
-      path: 'ev-emitter-shim',
-      namespace: 'ev-emitter-shim',
-    }));
-    build.onLoad({ filter: /.*/, namespace: 'ev-emitter-shim' }, () => ({
-      contents: evEmitterShimContents,
-      loader: 'js',
-    }));
-  },
-};
+const evEmitterShimPlugin = makeShimPlugin( 'ev-emitter', evEmitterShimContents );
 
 // ─────────────────────────────────────────────────────────────────────────────
 // `get-size` shim plugin (improvement #027 / item O)
@@ -1176,19 +1171,7 @@ function getSize( elem ) {
 module.exports = getSize;
 `;
 
-const getSizeShimPlugin = {
-  name: 'get-size-shim',
-  setup(build) {
-    build.onResolve({ filter: /^get-size$/ }, () => ({
-      path: 'get-size-shim',
-      namespace: 'get-size-shim',
-    }));
-    build.onLoad({ filter: /.*/, namespace: 'get-size-shim' }, () => ({
-      contents: getSizeShimContents,
-      loader: 'js',
-    }));
-  },
-};
+const getSizeShimPlugin = makeShimPlugin( 'get-size', getSizeShimContents );
 
 // Base config shared by every output format. Format-specific bits
 // (`format`, `globalName`, `stdin`, `outfile`, `minify`) are layered on top.
@@ -1205,51 +1188,31 @@ const baseConfig = {
   plugins: [matchesSelectorShimPlugin, getSizeShimPlugin, evEmitterShimPlugin, depFilePatchesPlugin],
 };
 
-const iifeSharedConfig = {
-  ...baseConfig,
-  stdin: {
-    contents: cjsEntryContents,
-    resolveDir: ROOT,
-    sourcefile: 'masonry-pkgd-entry.cjs',
-    loader: 'js',
-  },
-  format: 'iife',
-  globalName: 'Masonry',
-};
-
-const cjsConfig = {
-  ...baseConfig,
-  stdin: {
-    contents: cjsEntryContents,
-    resolveDir: ROOT,
-    sourcefile: 'masonry-cjs-entry.cjs',
-    loader: 'js',
-  },
-  format: 'cjs',
-  outfile: path.join(DIST, 'masonry.cjs'),
-  // Bundlers minify for the consumer; shipping a minified library inflates
-  // their source maps without changing what the user actually downloads.
-  minify: false,
-};
-
-const esmConfig = {
-  ...baseConfig,
-  stdin: {
-    contents: esmEntryContents,
-    resolveDir: ROOT,
-    sourcefile: 'masonry-esm-entry.mjs',
-    loader: 'js',
-  },
-  format: 'esm',
-  outfile: path.join(DIST, 'masonry.mjs'),
-  minify: false,
-};
+// Factory: build an esbuild config object from a small spec. The seven
+// build targets below (4 main + 3 Web Component) all share `baseConfig`
+// and a `stdin: { contents, resolveDir, sourcefile, loader }` shape;
+// only `format`, `outfile`, `globalName`, and `minify` differ. Bundlers
+// minify for the consumer, so non-IIFE outputs ship unminified by default.
+function makeBuildConfig({ entryContents, sourcefile, format, outfile, minify, globalName }) {
+  const cfg = {
+    ...baseConfig,
+    stdin: {
+      contents: entryContents,
+      resolveDir: ROOT,
+      sourcefile,
+      loader: 'js',
+    },
+    format,
+    outfile,
+    minify: !!minify,
+  };
+  if ( globalName ) cfg.globalName = globalName;
+  return cfg;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Web Component (#034 / item Q) — separate builds so consumers using
 // the imperative `new Masonry(...)` API don't pay for the wrapper bytes.
-// Each `<masonry-grid>` build is its own bundle that imports the same
-// shimmed deps as the main bundles.
 // ─────────────────────────────────────────────────────────────────────────────
 const wcEntryCjs = `
 'use strict';
@@ -1261,63 +1224,62 @@ import MasonryGridElement from ${JSON.stringify(path.join(ROOT, 'masonry-grid-el
 export default MasonryGridElement;
 `;
 
-const wcIifeConfig = {
-  ...baseConfig,
-  stdin: {
-    contents: wcEntryCjs,
-    resolveDir: ROOT,
-    sourcefile: 'masonry-grid-element-pkgd-entry.cjs',
-    loader: 'js',
-  },
-  format: 'iife',
-  globalName: 'MasonryGridElement',
-};
-
-const wcEsmConfig = {
-  ...baseConfig,
-  stdin: {
-    contents: wcEntryEsm,
-    resolveDir: ROOT,
-    sourcefile: 'masonry-grid-element-esm-entry.mjs',
-    loader: 'js',
-  },
-  format: 'esm',
-  outfile: path.join(DIST, 'masonry-grid-element.mjs'),
-  minify: false,
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Run unminified + minified builds in parallel. esbuild's `logLevel: 'info'`
-// already prints warnings inline, so we don't post-process them here.
+// Run all seven builds in parallel.
 // ─────────────────────────────────────────────────────────────────────────────
 await mkdir(DIST, { recursive: true });
 
 const t0 = performance.now();
 
 await Promise.all([
-  esbuild.build({
-    ...iifeSharedConfig,
+  esbuild.build(makeBuildConfig({
+    entryContents: cjsEntryContents,
+    sourcefile: 'masonry-pkgd-entry.cjs',
+    format: 'iife',
+    globalName: 'Masonry',
     outfile: path.join(DIST, 'masonry.pkgd.js'),
-    minify: false,
-  }),
-  esbuild.build({
-    ...iifeSharedConfig,
+  })),
+  esbuild.build(makeBuildConfig({
+    entryContents: cjsEntryContents,
+    sourcefile: 'masonry-pkgd-entry.cjs',
+    format: 'iife',
+    globalName: 'Masonry',
     outfile: path.join(DIST, 'masonry.pkgd.min.js'),
     minify: true,
-  }),
-  esbuild.build(cjsConfig),
-  esbuild.build(esmConfig),
-  esbuild.build({
-    ...wcIifeConfig,
+  })),
+  esbuild.build(makeBuildConfig({
+    entryContents: cjsEntryContents,
+    sourcefile: 'masonry-cjs-entry.cjs',
+    format: 'cjs',
+    outfile: path.join(DIST, 'masonry.cjs'),
+  })),
+  esbuild.build(makeBuildConfig({
+    entryContents: esmEntryContents,
+    sourcefile: 'masonry-esm-entry.mjs',
+    format: 'esm',
+    outfile: path.join(DIST, 'masonry.mjs'),
+  })),
+  esbuild.build(makeBuildConfig({
+    entryContents: wcEntryCjs,
+    sourcefile: 'masonry-grid-element-pkgd-entry.cjs',
+    format: 'iife',
+    globalName: 'MasonryGridElement',
     outfile: path.join(DIST, 'masonry-grid-element.js'),
-    minify: false,
-  }),
-  esbuild.build({
-    ...wcIifeConfig,
+  })),
+  esbuild.build(makeBuildConfig({
+    entryContents: wcEntryCjs,
+    sourcefile: 'masonry-grid-element-pkgd-entry.cjs',
+    format: 'iife',
+    globalName: 'MasonryGridElement',
     outfile: path.join(DIST, 'masonry-grid-element.min.js'),
     minify: true,
-  }),
-  esbuild.build(wcEsmConfig),
+  })),
+  esbuild.build(makeBuildConfig({
+    entryContents: wcEntryEsm,
+    sourcefile: 'masonry-grid-element-esm-entry.mjs',
+    format: 'esm',
+    outfile: path.join(DIST, 'masonry-grid-element.mjs'),
+  })),
 ]);
 
 const elapsed = performance.now() - t0;
