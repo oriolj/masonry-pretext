@@ -216,6 +216,25 @@ export interface MasonryOptions {
    */
   pretextify?(element: Element): MasonrySize | null | undefined | false;
 
+  /**
+   * **Suppress the one-time `console.info` banner for this instance.**
+   * Same suppression as `Masonry.silent = true` (which is global), but
+   * scoped to a single constructor call. Useful when you want one
+   * particular grid (e.g., a server-rendered preview iframe, a hidden
+   * pre-render pass) to stay quiet without affecting any other grids
+   * on the page.
+   *
+   * Per-instance `silent` wins over `Masonry.silent` because it's the
+   * more specific signal: setting `silent: true` on a single
+   * construction call also suppresses the banner globally for that
+   * call, but leaves the global flag untouched.
+   *
+   * Default `false`.
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/039-per-instance-silent.md
+   */
+  silent?: boolean;
+
   // ----- Legacy compat aliases (mapped via Outlayer.compatOptions) -----
   // These are the upstream upstream-v3-era names. They still work because
   // the upstream qunit tests use them. Prefer the un-`is`-prefixed names

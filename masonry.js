@@ -379,12 +379,16 @@
   // #037 — one-time console banner on first construction. Helps users
   // confirm at a glance which masonry build they're running. Log via
   // console.info so it shows in DevTools but stays out of error
-  // dashboards. Set `Masonry.silent = true` BEFORE the first
-  // `new Masonry(...)` to suppress.
+  // dashboards. Suppress globally with `Masonry.silent = true` BEFORE
+  // the first `new Masonry(...)`, or per-instance via the
+  // `silent: true` option (#039 / D.12) — the latter wins over the
+  // global flag because it's the more specific signal. The first
+  // non-silent construction still flips `hasLoggedBanner`, so a silent
+  // grid coexisting with a noisy one will not produce a duplicate.
   var hasLoggedBanner = false;
   var baseCreate = proto._create;
   proto._create = function() {
-    if ( !hasLoggedBanner && !Masonry.silent &&
+    if ( !hasLoggedBanner && !Masonry.silent && !this.options.silent &&
          typeof console !== 'undefined' && console.info ) {
       hasLoggedBanner = true;
       console.info(

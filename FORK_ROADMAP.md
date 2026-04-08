@@ -1208,7 +1208,7 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | **D.9** | **`replaceItems(newItems)`** — swap the item set without destroy/reconstruct | downstream consumer ask | ⬜ proposed | | nice-to-have for SPA navigation between grids; modest LCP win; see § below |
 | **D.10** | **`pause()` / `resume()`** for View Transitions | downstream consumer ask | ⬜ proposed | | speculative — unproven win; see § below |
 | **D.11** | **`Masonry.diagnose()`** structured state snapshot | downstream consumer ask | ⬜ proposed | | dev/debug helper standardization; see § below |
-| **D.12** | **Per-instance `silent: true` option** — currently global only | downstream consumer ask | ⬜ proposed | | trivial ergonomics; see § below |
+| **D.12** | **Per-instance `silent: true` option** — currently global only | downstream consumer ask | ✅ `v5.0.0-dev.39` | [039-per-instance-silent.md](./improvements/039-per-instance-silent.md) | one extra `&& !this.options.silent` term in the banner gate; +5 B gz; per-instance wins over global, but does NOT mutate global; documented in masonry.d.ts |
 
 **v5.0.0-rc.1 ships at the end of step 7 in the new sequencing** (after the size deletions + the breaking changes). v5.0.0 final follows once items P + L + § 2.4 + TS types land.
 

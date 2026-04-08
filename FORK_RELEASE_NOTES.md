@@ -15,6 +15,20 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.39 — 2026-04-09 — Per-instance `silent` option (D.12)
+
+> Tag: `v5.0.0-dev.39` · Improvement: [`039-per-instance-silent.md`](./improvements/039-per-instance-silent.md) · Closes downstream consumer ask **D.12**
+
+The one-time `console.info` banner from `v5.0.0-dev.37` was suppressible only via the global flag `Masonry.silent = true`. **You can now also pass `silent: true` to the constructor for per-instance suppression**, useful for grids where the banner would be inappropriate (server-rendered preview iframes, hidden pre-render passes, embedded widgets that shouldn't leak fork branding).
+
+```js
+new Masonry(grid, { silent: true });
+```
+
+**Precedence:** per-instance `silent` wins over `Masonry.silent` because it's the more specific signal. A silent instance does NOT consume the one-shot banner — a later non-silent instance still triggers it. Setting `silent: true` on one grid does not mutate any global state.
+
+**Cost:** +5 B gzipped on `dist/masonry.pkgd.min.js`. Documented in `masonry.d.ts`. All test gates green.
+
 ### v5.0.0-dev.38 — 2026-04-09 — Source maps in `dist/` (D.5)
 
 > Tag: `v5.0.0-dev.38` · Improvement: [`038-source-maps.md`](./improvements/038-source-maps.md) · Closes downstream consumer ask **D.5**

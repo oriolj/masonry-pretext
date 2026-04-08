@@ -1133,7 +1133,7 @@ var require_masonry = __commonJS({
       var hasLoggedBanner = false;
       var baseCreate = proto._create;
       proto._create = function() {
-        if (!hasLoggedBanner && !Masonry2.silent && typeof console !== "undefined" && console.info) {
+        if (!hasLoggedBanner && !Masonry2.silent && !this.options.silent && typeof console !== "undefined" && console.info) {
           hasLoggedBanner = true;
           console.info(
             "%cmasonry-pretext%c v" + Masonry2.version + " \u2014 https://github.com/oriolj/masonry-pretext",
