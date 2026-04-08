@@ -650,6 +650,45 @@
     finally { this._ignoreMutations = false; }
   };
 
+  // ── #046 / D.9 — replaceItems atomic swap ─────────────────────────────
+  // Remove all current items + add a new set in a single relayout pass.
+  // Equivalent to `destroy() + new Masonry(...)` but reuses the existing
+  // observer wiring + column measurements + rAF coalescing state, so
+  // SPA navigation between two structurally similar grids skips the
+  // construction cost. Modest LCP win; primarily ergonomic — consumers
+  // don't have to manage destroy/reconstruct lifecycle in their
+  // framework integration.
+  //
+  // The current items are removed via the existing proto.remove() (which
+  // detaches them from the DOM AND unobserves them), then the new ones
+  // are appended via _itemize (which observes them via the existing
+  // _itemize override). The single layout() call at the end is the
+  // single rAF cost.
+  proto.replaceItems = function( newElems ) {
+    // Remove the current items via the existing remove() override so
+    // observer cleanup + mutation re-entry guard fire correctly.
+    var currentElems = this.items.map( function( item ) { return item.element; });
+    if ( currentElems.length ) {
+      baseRemove.call( this, currentElems );
+    }
+    // Append the new items via _itemize (which our override re-observes
+    // for the per-item ResizeObserver). Wrap in the mutation re-entry
+    // guard so the MutationObserver from #031 doesn't schedule a second
+    // relayout if observeMutations is on.
+    this._ignoreMutations = true;
+    try {
+      var newItems = this._itemize( newElems );
+      // Append to the items array (mirroring proto.appended's logic).
+      if ( newItems.length ) {
+        this.items = this.items.concat( newItems );
+      }
+    } finally {
+      this._ignoreMutations = false;
+    }
+    // Single relayout pass over the merged item set.
+    this.layout();
+  };
+
   // Disconnect ResizeObserver (#012) and MutationObserver (#031) on destroy.
   var baseDestroy = proto.destroy;
   proto.destroy = function() {

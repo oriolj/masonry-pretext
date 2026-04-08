@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: replaceItems (#046 / D.9)</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for the replaceItems atomic swap (#046 / D.9).
+    The fixture starts with 3 items (the OLD set), then calls
+    msnry.replaceItems() with 4 NEW items injected into the DOM. The
+    new items have different heights so the layout shape changes.
+
+    Old layout (cw=60, 3 cols, 3 items at 60×30):
+       (0,0), (60,0), (120,0)
+
+    New layout (4 items: 60×60, 60×30, 60×30, 60×30):
+       item 0 → (0,   0), colYs = [60, 0,  0]
+       item 1 → (60,  0), colYs = [60, 30, 0]
+       item 2 → (120, 0), colYs = [60, 30, 30]
+       item 3 → (60, 30), colYs = [60, 60, 30]
+
+    Discriminating signal: item 3 lands at (60, 30) only if
+    replaceItems correctly removed the old set + appended the new
+    set + relayouted. Without it, item 3 wouldn't exist (only 3 items
+    in the original DOM).
+  -->
+  <div id="replace-items" class="container">
+    <div class="item old-item"></div>
+    <div class="item old-item"></div>
+    <div class="item old-item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#replace-items');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+    });
+
+    // Inject the new items into the DOM (replaceItems doesn't insert
+    // elements — it expects them to already be in the DOM, mirroring
+    // the appended() / prepended() pattern).
+    var newElems = [];
+    for (var i = 0; i < 4; i++) {
+      var elem = document.createElement('div');
+      elem.className = 'item new-item';
+      if (i === 0) elem.style.height = '60px';
+      grid.appendChild(elem);
+      newElems.push(elem);
+    }
+
+    // Atomic swap: remove the 3 old items + add the 4 new ones in
+    // one relayout pass.
+    window.__MSNRY.replaceItems(newElems);
+
+    // Capture the post-swap state for the pageAssert. Items should
+    // be exactly the new 4, observers should be reused.
+    window.__POST_SWAP_STATE = {
+      itemCount: window.__MSNRY.items.length,
+      itemElementsAreNew: window.__MSNRY.items.every(function (it) {
+        return it.element.classList.contains('new-item');
+      }),
+      // Observer state should be preserved (not destroyed/recreated)
+      hasResizeObserver: !!window.__MSNRY._resizeObserver,
+    };
+
+    requestAnimationFrame(function () {
+      window.__READY = true;
+    });
+  </script>
+
+</body>
+</html>

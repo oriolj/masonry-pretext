@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.45
+ * Masonry PACKAGED v5.0.0-dev.46
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -937,7 +937,7 @@ var require_masonry = __commonJS({
       Masonry.prototype = Object.create(Outlayer.prototype);
       Masonry.prototype.constructor = Masonry;
       Masonry.namespace = "masonry";
-      Masonry.version = true ? "5.0.0-dev.45" : "source";
+      Masonry.version = true ? "5.0.0-dev.46" : "source";
       Masonry.fork = "masonry-pretext";
       Masonry.defaults = Object.assign({}, Outlayer.defaults);
       Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
@@ -1284,6 +1284,24 @@ var require_masonry = __commonJS({
         } finally {
           this._ignoreMutations = false;
         }
+      };
+      proto.replaceItems = function(newElems) {
+        var currentElems = this.items.map(function(item) {
+          return item.element;
+        });
+        if (currentElems.length) {
+          baseRemove.call(this, currentElems);
+        }
+        this._ignoreMutations = true;
+        try {
+          var newItems = this._itemize(newElems);
+          if (newItems.length) {
+            this.items = this.items.concat(newItems);
+          }
+        } finally {
+          this._ignoreMutations = false;
+        }
+        this.layout();
       };
       var baseDestroy = proto.destroy;
       proto.destroy = function() {

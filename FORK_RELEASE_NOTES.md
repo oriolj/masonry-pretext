@@ -15,6 +15,21 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.46 — 2026-04-09 — `replaceItems` atomic swap (D.9)
+
+> Tag: `v5.0.0-dev.46` · Improvement: [`046-replace-items.md`](./improvements/046-replace-items.md) · Closes downstream consumer ask **D.9**
+
+A new `msnry.replaceItems(newElems)` method removes all current items AND appends a new set in a single relayout pass. Equivalent to `destroy() + new Masonry(...)` but reuses the existing observer wiring + column measurements + rAF coalescing state, so SPA navigation between two structurally similar grids skips the construction cost.
+
+```ts
+// Before View Transition fires:
+msnry.replaceItems(grid.querySelectorAll('.new-item-set'));
+```
+
+The new items must already be in the DOM when `replaceItems` is called — same convention as `appended()` and `prepended()`. The method is a thin orchestration of existing API surface (remove all + `_itemize` + concat + `layout`); the value is purely ergonomic plus the modest LCP win from skipping construction-time observer setup.
+
+**Cost:** +59 B gzipped on `dist/masonry.pkgd.min.js`. New `replace-items.html` discriminating fixture (starts with 3 items, swaps to 4 with a different shape, asserts both the new layout positions AND that the items collection was correctly swapped + observer preserved across the swap).
+
 ### v5.0.0-dev.45 — 2026-04-09 — `static: 'until-resize'` hybrid mode (D.2) — **Tier 1 COMPLETE**
 
 > Tag: `v5.0.0-dev.45` · Improvement: [`045-static-until-resize.md`](./improvements/045-static-until-resize.md) · Closes downstream consumer ask **D.2** · **All four Tier 1 items now shipped**

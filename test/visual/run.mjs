@@ -252,6 +252,31 @@ const cases = [
     ],
   },
   {
+    // replaceItems atomic swap (#046 / D.9) — see test/visual/pages/replace-items.html
+    // for the discriminator design. Starts with 3 old items, then calls
+    // replaceItems with 4 new items (item 0 is taller). Layout assertion
+    // verifies the new layout shape; pageAssert verifies the items
+    // collection was correctly swapped and observers are still wired.
+    name: 'replace-items',
+    page: 'replace-items.html',
+    container: '#replace-items',
+    itemSelector: '.new-item',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '60px',  top: '30px' }, // discriminating: layout reflects 4 new items
+    ],
+    pageAssert: () => {
+      const state = window.__POST_SWAP_STATE;
+      if (!state) return '__POST_SWAP_STATE not captured';
+      if (state.itemCount !== 4) return `expected 4 items after swap, got ${state.itemCount}`;
+      if (!state.itemElementsAreNew) return 'old items still in msnry.items';
+      if (!state.hasResizeObserver) return 'ResizeObserver was destroyed across the swap';
+      return null;
+    },
+  },
+  {
     // static: 'until-resize' hybrid mode (#045 / D.2) — see
     // test/visual/pages/static-until-resize.html. Constructs with
     // `static: 'until-resize'` and a non-zero transitionDuration.

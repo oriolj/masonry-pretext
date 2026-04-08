@@ -438,6 +438,29 @@ export default class Masonry {
   /** Newly-prepended elements: add to the beginning + relayout. */
   prepended(elements: Element | Element[] | NodeListOf<Element>): void;
 
+  /**
+   * **Atomic item swap** (#046 / D.9). Removes all current items AND
+   * appends the new set in a single relayout pass. Equivalent to
+   * `destroy() + new Masonry(...)` but reuses the existing observer
+   * wiring + column measurements + rAF coalescing state, so SPA
+   * navigation between two structurally similar grids skips the
+   * construction cost.
+   *
+   * Modest LCP win for View-Transition navigations between modular
+   * pages; primarily an ergonomic helper so consumers don't have to
+   * manage destroy/reconstruct lifecycle in their framework integration.
+   *
+   * Example:
+   *
+   * ```ts
+   * // Before View Transition fires:
+   * msnry.replaceItems(grid.querySelectorAll('.new-item-set'));
+   * ```
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/046-replace-items.md
+   */
+  replaceItems(elements: Element | Element[] | NodeListOf<Element>): void;
+
   /** Add elements as stamps (fixed positions other items flow around). */
   stamp(elements: Element | Element[] | NodeListOf<Element> | string): void;
 
