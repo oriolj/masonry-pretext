@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.5
+ * Masonry PACKAGED v5.0.0-dev.6
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -364,7 +364,6 @@ var Masonry = (() => {
             var jsDashElems = document.querySelectorAll(".js-" + dashedNamespace);
             var elems = utils.makeArray(dataAttrElems).concat(utils.makeArray(jsDashElems));
             var dataOptionsAttr = dataAttr + "-options";
-            var jQuery = window2.jQuery;
             elems.forEach(function(elem) {
               var attr = elem.getAttribute(dataAttr) || elem.getAttribute(dataOptionsAttr);
               var options;
@@ -376,10 +375,7 @@ var Masonry = (() => {
                 }
                 return;
               }
-              var instance = new WidgetClass(elem, options);
-              if (jQuery) {
-                jQuery.data(elem, namespace, instance);
-              }
+              new WidgetClass(elem, options);
             });
           });
         };
@@ -763,7 +759,6 @@ var Masonry = (() => {
       })(typeof window !== "undefined" ? window : {}, function factory(window2, EvEmitter, getSize, utils, Item) {
         "use strict";
         var console2 = window2.console;
-        var jQuery = window2.jQuery;
         var noop = function() {
         };
         var GUID = 0;
@@ -777,9 +772,6 @@ var Masonry = (() => {
             return;
           }
           this.element = queryElement;
-          if (jQuery) {
-            this.$element = jQuery(this.element);
-          }
           this.options = utils.extend({}, this.constructor.defaults);
           this.option(options);
           var id = ++GUID;
@@ -996,16 +988,6 @@ var Masonry = (() => {
         proto.dispatchEvent = function(type, event, args) {
           var emitArgs = event ? [event].concat(args) : args;
           this.emitEvent(type, emitArgs);
-          if (jQuery) {
-            this.$element = this.$element || jQuery(this.element);
-            if (event) {
-              var $event = jQuery.Event(event);
-              $event.type = type;
-              this.$element.trigger($event, args);
-            } else {
-              this.$element.trigger(type, args);
-            }
-          }
         };
         proto.ignore = function(elem) {
           var item = this.getItem(elem);
@@ -1201,9 +1183,6 @@ var Masonry = (() => {
           var id = this.element.outlayerGUID;
           delete instances[id];
           delete this.element.outlayerGUID;
-          if (jQuery) {
-            jQuery.removeData(this.element, this.constructor.namespace);
-          }
         };
         Outlayer.data = function(elem) {
           elem = utils.getQueryElement(elem);
@@ -1219,9 +1198,6 @@ var Masonry = (() => {
           Layout.data = Outlayer.data;
           Layout.Item = subclass(Item);
           utils.htmlInit(Layout, namespace);
-          if (jQuery && jQuery.bridget) {
-            jQuery.bridget(namespace, Layout);
-          }
           return Layout;
         };
         function subclass(Parent) {
@@ -1429,113 +1405,10 @@ var Masonry = (() => {
     }
   });
 
-  // jquery-stub:jquery-stub
-  var require_jquery_stub = __commonJS({
-    "jquery-stub:jquery-stub"(exports, module) {
-      module.exports = void 0;
-    }
-  });
-
-  // node_modules/jquery-bridget/jquery-bridget.js
-  var require_jquery_bridget = __commonJS({
-    "node_modules/jquery-bridget/jquery-bridget.js"(exports, module) {
-      (function(window2, factory) {
-        if (typeof define == "function" && define.amd) {
-          define(["jquery"], function(jQuery) {
-            return factory(window2, jQuery);
-          });
-        } else if (typeof module == "object" && module.exports) {
-          module.exports = factory(
-            window2,
-            require_jquery_stub()
-          );
-        } else {
-          window2.jQueryBridget = factory(
-            window2,
-            window2.jQuery
-          );
-        }
-      })(typeof window !== "undefined" ? window : {}, function factory(window2, jQuery) {
-        "use strict";
-        var arraySlice = Array.prototype.slice;
-        var console2 = window2.console;
-        var logError = typeof console2 == "undefined" ? function() {
-        } : function(message) {
-          console2.error(message);
-        };
-        function jQueryBridget(namespace, PluginClass, $) {
-          $ = $ || jQuery || window2.jQuery;
-          if (!$) {
-            return;
-          }
-          if (!PluginClass.prototype.option) {
-            PluginClass.prototype.option = function(opts) {
-              if (!$.isPlainObject(opts)) {
-                return;
-              }
-              this.options = $.extend(true, this.options, opts);
-            };
-          }
-          $.fn[namespace] = function(arg0) {
-            if (typeof arg0 == "string") {
-              var args = arraySlice.call(arguments, 1);
-              return methodCall(this, arg0, args);
-            }
-            plainCall(this, arg0);
-            return this;
-          };
-          function methodCall($elems, methodName, args) {
-            var returnValue;
-            var pluginMethodStr = "$()." + namespace + '("' + methodName + '")';
-            $elems.each(function(i, elem) {
-              var instance = $.data(elem, namespace);
-              if (!instance) {
-                logError(namespace + " not initialized. Cannot call methods, i.e. " + pluginMethodStr);
-                return;
-              }
-              var method = instance[methodName];
-              if (!method || methodName.charAt(0) == "_") {
-                logError(pluginMethodStr + " is not a valid method");
-                return;
-              }
-              var value = method.apply(instance, args);
-              returnValue = returnValue === void 0 ? value : returnValue;
-            });
-            return returnValue !== void 0 ? returnValue : $elems;
-          }
-          function plainCall($elems, options) {
-            $elems.each(function(i, elem) {
-              var instance = $.data(elem, namespace);
-              if (instance) {
-                instance.option(options);
-                instance._init();
-              } else {
-                instance = new PluginClass(elem, options);
-                $.data(elem, namespace, instance);
-              }
-            });
-          }
-          updateJQuery($);
-        }
-        function updateJQuery($) {
-          if (!$ || $ && $.bridget) {
-            return;
-          }
-          $.bridget = jQueryBridget;
-        }
-        updateJQuery(jQuery || window2.jQuery);
-        return jQueryBridget;
-      });
-    }
-  });
-
   // masonry-pkgd-entry.cjs
   var require_masonry_pkgd_entry = __commonJS({
     "masonry-pkgd-entry.cjs"(exports, module) {
-      var Masonry = require_masonry();
-      var jQueryBridget = require_jquery_bridget();
-      jQueryBridget("masonry", Masonry);
-      module.exports = Masonry;
+      module.exports = require_masonry();
     }
   });
   return require_masonry_pkgd_entry();

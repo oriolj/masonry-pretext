@@ -1,21 +1,24 @@
 #!/usr/bin/env node
 // scripts/build.mjs — masonry-pretext esbuild bundle.
 //
-// Replaces the dead Gulp 3 + RequireJS + UglifyJS pipeline. Produces the same
-// two artifacts the upstream gulp build produced — `dist/masonry.pkgd.js` and
-// `dist/masonry.pkgd.min.js` — by bundling `masonry.js` together with
-// `jquery-bridget` (so consumers loading the packaged file get jQuery support
-// for free, matching upstream behavior). Splitting jquery-bridget into its
-// own optional file is roadmap § 2.5, not part of this improvement.
+// Replaces the dead Gulp 3 + RequireJS + UglifyJS pipeline (improvement
+// 002). Produces `dist/masonry.pkgd.js` and `dist/masonry.pkgd.min.js` by
+// bundling `masonry.js` and its CommonJS dependency tree.
+//
+// **No jQuery.** Improvement 006 removed `jquery-bridget` from devDeps,
+// stripped it out of the bundle entry, and DCE-eliminated every `if (jQuery)`
+// branch in `outlayer.js` / `fizzy-ui-utils.js`. Consumers who want
+// `$('.grid').masonry()` syntax must migrate to `new Masonry('.grid', { … })`
+// — the documented vanilla API. See improvements/006-remove-jquery.md.
 //
 // The bundle format is `iife` with `globalName: 'Masonry'`, so consumers can
 // drop the file in via `<script>` and use `new Masonry(...)` exactly the way
-// they did with upstream v4.2.2. The CJS branch of each UMD wrapper in the
-// dependency tree is what esbuild follows; the AMD and browser-global
-// branches end up as dead code in the unminified output and are eliminated
-// by the minifier.
+// they did with upstream v4.2.2 (minus the jQuery shim). The CJS branch of
+// each UMD wrapper in the dependency tree is what esbuild follows; the AMD
+// and browser-global branches end up as dead code in the unminified output
+// and are eliminated by the minifier.
 //
-// See FORK_ROADMAP.md § 2.1 and improvements/002-esbuild-build.md.
+// See FORK_ROADMAP.md § 2.1 and § 2.5.
 
 import * as esbuild from 'esbuild';
 import { readFile, stat, mkdir } from 'node:fs/promises';
@@ -41,44 +44,14 @@ const banner = bannerMatch[0]
   .replace('https://masonry.desandro.com', 'https://github.com/oriolj/masonry-pretext');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Entry — virtual stdin so we don't need a separate entry file in the repo
+// Entry — virtual stdin so we don't need a separate entry file in the repo.
+// jquery-bridget was removed in improvement 006; the entry is now just the
+// masonry source, with no jQuery shim.
 // ─────────────────────────────────────────────────────────────────────────────
 const entryContents = `
 'use strict';
-// Pull in the masonry source via its CommonJS UMD branch.
-var Masonry = require(${JSON.stringify(path.join(ROOT, 'masonry.js'))});
-// Bridge to jQuery so consumers can do $('.grid').masonry() if jQuery is
-// present at runtime. jQuery itself is *not* bundled — bridget no-ops if
-// window.jQuery is undefined.
-var jQueryBridget = require('jquery-bridget');
-jQueryBridget('masonry', Masonry);
-module.exports = Masonry;
+module.exports = require(${JSON.stringify(path.join(ROOT, 'masonry.js'))});
 `;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// jquery stub plugin
-//
-// jquery-bridget declares `jquery` as a hard runtime dependency in its
-// package.json (not a devDep), so a naive `require('jquery-bridget')` would
-// pull all 85 KB of jQuery into the bundle. Upstream's gulp build neutralized
-// this with RequireJS's `paths: { jquery: 'empty:' }` trick. The esbuild
-// equivalent is to intercept `require('jquery')` and return an empty CJS
-// module — bridget then falls through to `window.jQuery` at runtime, which
-// is exactly the upstream behavior (works if jQuery is loaded, no-ops if not).
-// ─────────────────────────────────────────────────────────────────────────────
-const jqueryStubPlugin = {
-  name: 'jquery-stub',
-  setup(build) {
-    build.onResolve({ filter: /^jquery$/ }, () => ({
-      path: 'jquery-stub',
-      namespace: 'jquery-stub',
-    }));
-    build.onLoad({ filter: /.*/, namespace: 'jquery-stub' }, () => ({
-      contents: 'module.exports = void 0;',
-      loader: 'js',
-    }));
-  },
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // outlayer/item.js modern-browser transform (improvement 004 / roadmap § L.2)
@@ -268,24 +241,114 @@ const outlayerItemModernPlugin = {
 // Verified by test/visual/ssr-smoke.mjs which loads the bundle in a Node
 // vm context with empty globals.
 // ─────────────────────────────────────────────────────────────────────────────
-const SSR_FILE_PATCHES = [
+// ─────────────────────────────────────────────────────────────────────────────
+// Dep-file patches plugin (improvements 005 SSR + 006 jQuery removal)
+//
+// Single plugin that applies build-time string transforms to the bundled
+// dependency files. Each entry covers one file and lists the transforms
+// applied to it. esbuild only allows one onLoad handler per file pattern,
+// so all the patches a given file needs must live in one entry.
+//
+// Concerns currently covered:
+//   - **SSR safety (#005, § L.2b):** wrap UMD wrapper IIFE call sites with
+//     `typeof window !== 'undefined' ? window : {}` so the bundle can be
+//     loaded in a Node `vm` context with empty globals (verified by
+//     test/visual/ssr-smoke.mjs).
+//   - **docReady guard (#005, § L.2b):** add a `typeof document === 'undefined'`
+//     short-circuit to fizzy-ui-utils.docReady, called at module load via
+//     Outlayer.create('masonry') → htmlInit → docReady.
+//   - **jQuery removal (#006, § 2.5):** replace `var jQuery = window.jQuery`
+//     with `var jQuery = false` in outlayer.js and fizzy-ui-utils.js so
+//     esbuild's minifier DCE-eliminates every `if (jQuery)` branch (the
+//     dispatchEvent jQuery event firing, the destroy `removeData` call, the
+//     Outlayer.create bridget call, the htmlInit `$.data` call). With
+//     jquery-bridget no longer bundled, these branches can never run anyway.
+//
+// outlayer/item.js's transforms live in `outlayerItemModernPlugin` instead
+// (it has 7 transforms covering vendor-prefix deletion + the SSR guard).
+// ev-emitter is already SSR-safe upstream and needs no patching.
+// ─────────────────────────────────────────────────────────────────────────────
+const DEP_FILE_PATCHES = [
   {
     file: /node_modules[\\/]outlayer[\\/]outlayer\.js$/,
     transforms: [
       {
-        description: 'outlayer/outlayer.js UMD call site',
+        description: '[SSR] outlayer/outlayer.js UMD call site',
         find: `}( window, function factory( window, EvEmitter, getSize, utils, Item ) {`,
         replace: `}( typeof window !== 'undefined' ? window : {}, function factory( window, EvEmitter, getSize, utils, Item ) {`,
       },
-    ],
-  },
-  {
-    file: /node_modules[\\/]jquery-bridget[\\/]jquery-bridget\.js$/,
-    transforms: [
+      // ── jQuery removal (#006, § 2.5) — direct branch deletion ──────────────
+      // Could not rely on `var jQuery = false` + esbuild constant folding —
+      // the minifier doesn't propagate the constant across function-property
+      // closures (`Outlayer.create`, `proto.dispatchEvent`, etc.). The fix is
+      // to delete each `if (jQuery) { … }` block explicitly. Each transform
+      // is an exact-string substitution that aborts the build if the pattern
+      // is no longer present.
       {
-        description: 'jquery-bridget/jquery-bridget.js UMD call site',
-        find: `}( window, function factory( window, jQuery ) {`,
-        replace: `}( typeof window !== 'undefined' ? window : {}, function factory( window, jQuery ) {`,
+        description: '[no-jquery] outlayer.js — delete `var jQuery = window.jQuery;`',
+        find: `var jQuery = window.jQuery;
+`,
+        replace: ``,
+      },
+      {
+        description: '[no-jquery] outlayer.js — delete constructor `if (jQuery)` block',
+        find: `  this.element = queryElement;
+  // add jQuery
+  if ( jQuery ) {
+    this.$element = jQuery( this.element );
+  }
+`,
+        replace: `  this.element = queryElement;
+`,
+      },
+      {
+        description: '[no-jquery] outlayer.js — delete dispatchEvent `if (jQuery)` block',
+        find: `  this.emitEvent( type, emitArgs );
+
+  if ( jQuery ) {
+    // set this.$element
+    this.$element = this.$element || jQuery( this.element );
+    if ( event ) {
+      // create jQuery event
+      var $event = jQuery.Event( event );
+      $event.type = type;
+      this.$element.trigger( $event, args );
+    } else {
+      // just trigger with type if no event available
+      this.$element.trigger( type, args );
+    }
+  }
+};`,
+        replace: `  this.emitEvent( type, emitArgs );
+};`,
+      },
+      {
+        description: '[no-jquery] outlayer.js — delete destroy `if (jQuery)` block',
+        find: `  delete this.element.outlayerGUID;
+  // remove data for jQuery
+  if ( jQuery ) {
+    jQuery.removeData( this.element, this.constructor.namespace );
+  }
+
+};`,
+        replace: `  delete this.element.outlayerGUID;
+};`,
+      },
+      {
+        description: '[no-jquery] outlayer.js — delete Outlayer.create `if (jQuery && jQuery.bridget)` block',
+        find: `  utils.htmlInit( Layout, namespace );
+
+  // -------------------------- jQuery bridge -------------------------- //
+
+  // make into jQuery plugin
+  if ( jQuery && jQuery.bridget ) {
+    jQuery.bridget( namespace, Layout );
+  }
+
+  return Layout;`,
+        replace: `  utils.htmlInit( Layout, namespace );
+
+  return Layout;`,
       },
     ],
   },
@@ -293,7 +356,7 @@ const SSR_FILE_PATCHES = [
     file: /node_modules[\\/]get-size[\\/]get-size\.js$/,
     transforms: [
       {
-        description: 'get-size/get-size.js UMD call site',
+        description: '[SSR] get-size/get-size.js UMD call site',
         find: `})( window, function factory() {`,
         replace: `})( typeof window !== 'undefined' ? window : {}, function factory() {`,
       },
@@ -303,26 +366,47 @@ const SSR_FILE_PATCHES = [
     file: /node_modules[\\/]fizzy-ui-utils[\\/]utils\.js$/,
     transforms: [
       {
-        description: 'fizzy-ui-utils/utils.js UMD call site',
+        description: '[SSR] fizzy-ui-utils/utils.js UMD call site',
         find: `}( window, function factory( window, matchesSelector ) {`,
         replace: `}( typeof window !== 'undefined' ? window : {}, function factory( window, matchesSelector ) {`,
       },
       {
-        description: 'fizzy-ui-utils/utils.js docReady — guard against undefined document',
+        description: '[SSR] fizzy-ui-utils/utils.js docReady — guard against undefined document',
         find: `utils.docReady = function( callback ) {
   var readyState = document.readyState;`,
         replace: `utils.docReady = function( callback ) {
   if ( typeof document === 'undefined' ) return;
   var readyState = document.readyState;`,
       },
+      {
+        description: '[no-jquery] fizzy-ui-utils.js htmlInit — delete `var jQuery = window.jQuery;`',
+        find: `    var dataOptionsAttr = dataAttr + '-options';
+    var jQuery = window.jQuery;
+`,
+        replace: `    var dataOptionsAttr = dataAttr + '-options';
+`,
+      },
+      {
+        description: '[no-jquery] fizzy-ui-utils.js htmlInit — delete `if (jQuery)` block (the $.data call)',
+        find: `      // initialize
+      var instance = new WidgetClass( elem, options );
+      // make available via $().data('namespace')
+      if ( jQuery ) {
+        jQuery.data( elem, namespace, instance );
+      }
+    });`,
+        replace: `      // initialize
+      new WidgetClass( elem, options );
+    });`,
+      },
     ],
   },
 ];
 
-const ssrDomGuardPlugin = {
-  name: 'ssr-dom-guard',
+const depFilePatchesPlugin = {
+  name: 'dep-file-patches',
   setup(build) {
-    for (const { file, transforms } of SSR_FILE_PATCHES) {
+    for (const { file, transforms } of DEP_FILE_PATCHES) {
       build.onLoad({ filter: file }, async (args) => {
         let src = await readFile(args.path, 'utf8');
         for (const { description, find, replace } of transforms) {
@@ -330,7 +414,7 @@ const ssrDomGuardPlugin = {
           src = src.replace(find, replace);
           if (src === before) {
             throw new Error(
-              `ssr-dom-guard: pattern not found for "${description}" in ${args.path}.`,
+              `dep-file-patches: pattern not found for "${description}" in ${args.path}.`,
             );
           }
         }
@@ -387,7 +471,7 @@ const sharedConfig = {
   banner: { js: banner },
   legalComments: 'inline',
   logLevel: 'info',
-  plugins: [jqueryStubPlugin, matchesSelectorShimPlugin, outlayerItemModernPlugin, ssrDomGuardPlugin],
+  plugins: [matchesSelectorShimPlugin, outlayerItemModernPlugin, depFilePatchesPlugin],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -128,13 +128,20 @@ Flagging but **not committing**: for huge grids (10k+ items) with multi-column-s
 
 **Risk.** This is the largest change in scope. Touches Item lifecycle, transitions, the public API around `addItems`/`stamp`/`unstamp`. Should be the *last* item done, after benchmarks prove the perf wins from § 1 land. Probably warrants a v5 major.
 
-### 2.5 Drop jQuery from the default packaged build
+### 2.5 Remove jQuery entirely
 
-**What.** Stop bundling `jquery-bridget` into `dist/masonry.pkgd.js`. Ship two builds:
-- `dist/masonry.js` — vanilla, no jQuery
-- `dist/masonry.jquery.js` — with bridget, for legacy consumers
+**What.** Drop every trace of jQuery from the fork:
 
-**Why measurable.** Removes jquery-bridget from the default download. Most new projects in 2026 don't use jQuery; making them pay for it by default is wrong.
+1. **Drop `jquery-bridget` from `devDependencies`** so `npm install masonry-pretext` no longer pulls jQuery into the dep tree (jquery-bridget declares `jquery` as a hard runtime dep, which transitively installs all of jQuery on every consumer's disk even though we never use it at runtime).
+2. **Stop bundling `jquery-bridget`** into `dist/masonry.pkgd.{js,min.js}`. The bridget shim is the only reason `$('.grid').masonry()` syntax works for jQuery users; removing it means **anyone using the jQuery selector syntax must migrate to `new Masonry('.grid', { … })`** (the documented vanilla API anyway).
+3. **Strip the dead `if (jQuery) { … }` branches** in `outlayer/outlayer.js` and `fizzy-ui-utils/utils.js`. With jquery-bridget gone there's no path that would ever set `window.jQuery` from inside the bundle, and consumers who happen to have jQuery loaded on the page get nothing from these branches. Replace each `var jQuery = window.jQuery;` with `var jQuery = false;` so esbuild's minifier DCE-eliminates the unreachable blocks.
+4. **Delete the `jqueryStubPlugin`** from `scripts/build.mjs` — once nothing in the bundle does `require('jquery')`, the stub has nothing to intercept.
+
+**Why measurable.** Removes ~1,200-1,500 B raw / ~400-600 B gzipped of jquery-bridget code, plus another ~200-400 B raw / ~80-150 B gz of dead branches in outlayer + fizzy-ui-utils. Cumulative target: **−1,400 to −1,900 B raw / −480 to −750 B gz** on `dist/masonry.pkgd.min.js`. Vs upstream-frozen v4.2.2 gz, this should put the fork **below** for the first time (currently +262 B over upstream gz; predicted to land at roughly −300 to −500 B under upstream).
+
+**What this is *not*.** This is **not** the "ship two builds (vanilla + jquery shim)" approach the original roadmap described. The maintainer's call is to drop jQuery support entirely — anyone using the bridget shim syntax has to migrate. The breaking change is intentional and documented in the migration notes for the corresponding `5.0.0-dev.N` tag.
+
+**Risk.** This is a **breaking change** for any consumer using `$('.grid').masonry()` syntax or `.masonry('reloadItems')` jQuery method calls. They must migrate to `new Masonry('.grid', { … })` and instance method calls. The vanilla API has always been the documented primary path, so the migration is small. Surface it loudly in the release notes.
 
 ### 2.6 Delete `bower.json` and `composer.json`
 
@@ -818,6 +825,7 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | 4a | Delete `matchesSelector` polyfill | § L.1 | ✅ `v5.0.0-dev.3` | [003-delete-matches-selector-polyfill.md](./improvements/003-delete-matches-selector-polyfill.md) | **−401 B raw / −102 B gz** on min.js; first row where raw < upstream |
 | 4b | Delete vendor-prefix detection (size only) | § L.2a | ✅ `v5.0.0-dev.4` | [004-delete-vendor-prefix-detection.md](./improvements/004-delete-vendor-prefix-detection.md) | **−606 B raw / −172 B gz** on min.js; SSR claim disproven, see § L.2b |
 | 4b' | SSR fix — wrap UMD call sites with `typeof window` guards | § L.2b | ✅ `v5.0.0-dev.5` | [005-ssr-import-fix.md](./improvements/005-ssr-import-fix.md) | **closes desandro/masonry #1194 / #1121 / #1201**; +13 B gz cost; ssr-smoke now in `make test` |
+| 4c | **Remove jQuery entirely** (drop jquery-bridget from devDeps + bundle, delete every `if (jQuery)` branch directly) | § 2.5 | ✅ `v5.0.0-dev.6` | [006-remove-jquery.md](./improvements/006-remove-jquery.md) | **MILESTONE: every min.js metric now below upstream** (raw −2,129 B / −8.83%, gz −295 B / −4%, br −200 B / −3%); zero jquery/bridget strings in bundle (verified by new `no-jquery` gate); **breaking change** for jQuery shim users |
 | 4c | Delete getSize box-sizing setup | § L.3 | ⬜ | | IE11 / Firefox <29 quirk, dead in 2026 |
 | 4d | Delete setTimeout(0) docReady wrapper | § L.6 | ⬜ | | flickity-specific workaround |
 | 5a | ResizeObserver: container resize | § P.1a | ⬜ | | replaces window resize + 100ms debounce |

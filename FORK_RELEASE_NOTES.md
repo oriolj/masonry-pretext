@@ -17,6 +17,93 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.6 — 2026-04-08 — Remove jQuery entirely (§ 2.5) — **BREAKING CHANGE**
+
+> Tag: `v5.0.0-dev.6` · Improvement: [`006-remove-jquery.md`](./improvements/006-remove-jquery.md)
+
+### Headline
+
+**Zero `jquery` / `bridget` references remain in `dist/masonry.pkgd.{js,min.js}`.** Verified by a new permanent `make test` gate (`test/visual/no-jquery.mjs`).
+
+**For the first time in the fork, every minified-bundle size metric is below upstream v4.2.2.** The post-002 esbuild gzip regression (+524 B over upstream) is fully repaid, and the fork is now meaningfully smaller in raw, gzip, and brotli.
+
+| Metric | upstream v4.2.2 | v5.0.0-dev.6 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,103 | **21,974** | **−2,129 B (−8.83 %)** |
+| `dist/masonry.pkgd.min.js` gzip | 7,367 | **7,072** | **−295 B (−4.00 %)** |
+| `dist/masonry.pkgd.min.js` brotli | 6,601 | **6,401** | **−200 B (−3.03 %)** |
+
+### ⚠️ Breaking change
+
+**The jQuery shim is gone.** The `$('.grid').masonry({ … })` and `.masonry('reloadItems')` syntax no longer works. Migrate to:
+
+```js
+// before
+$('.grid').masonry({ columnWidth: 200 });
+$('.grid').masonry('reloadItems');
+$('.grid').masonry('layout');
+
+// after
+const msnry = new Masonry('.grid', { columnWidth: 200 });
+msnry.reloadItems();
+msnry.layout();
+```
+
+The vanilla API has always been the documented primary path; this just removes the optional shim. If you previously had `<script src="jquery.js">` followed by `<script src="masonry.pkgd.min.js">`, you can drop the jQuery script tag — Masonry no longer cares whether jQuery is on the page.
+
+### Removed
+
+- **`jquery-bridget` dropped from `devDependencies`.** `npm install masonry-pretext` no longer walks the tree to install jQuery (jquery-bridget declared `jquery` as a hard runtime dep, which transitively pulled all of jQuery into `node_modules` even though the bundle never used it at runtime).
+- **`jquery-bridget` removed from the bundle entry** in `scripts/build.mjs`. The packaged file no longer contains the bridget shim code.
+- **Every `if (jQuery) { … }` branch** in `outlayer/outlayer.js` and `fizzy-ui-utils/utils.js` (the constructor `$element` setup, the `dispatchEvent` jQuery event firing, the `destroy` `jQuery.removeData` call, the `Outlayer.create` `$.bridget` call, the `htmlInit` `$.data` call) — directly deleted via build-time exact-string transforms. **Initial attempt** used `const jQuery = false` + esbuild's minifier DCE; that left dead `bridget` references in the minified output because esbuild's constant-folding doesn't cross function-property closures. **Working approach** is direct deletion of each branch.
+- **`jqueryStubPlugin`** from `scripts/build.mjs` (the plugin that intercepted `require('jquery')` since #002). With nothing in the bundle requesting jQuery anymore, the stub has nothing to intercept.
+
+### Added
+
+- **`test/visual/no-jquery.mjs`** — string-presence gate that asserts `dist/masonry.pkgd.{js,min.js}` contain zero `jquery` / `bridget` references. Now part of `make test` so future improvements can never silently reintroduce jQuery code (which a behavior-only test would miss).
+- **`npm run test:no-jquery`** script for running the gate in isolation.
+
+### Changed
+
+- **`scripts/build.mjs` plugin restructure**: `ssrDomGuardPlugin` renamed to `depFilePatchesPlugin` (and `SSR_FILE_PATCHES` → `DEP_FILE_PATCHES`). The plugin's name was already wrong after #005; this commit broadens it to "all per-file build-time transforms grouped by concern." Each file's transform list now mixes SSR guards, jQuery removal, and any future per-file patches.
+- **`devDependencies`** count: 5 → 4.
+
+### Numbers — full delta
+
+| File | Metric | pre-006 | v5.0.0-dev.6 | Δ |
+|---|---|---:|---:|---:|
+| `dist/masonry.pkgd.js` | raw | 54,501 | **50,043** | **−8.18 %** |
+| `dist/masonry.pkgd.js` | gzip | 10,293 | **9,460** | **−8.09 %** |
+| `dist/masonry.pkgd.js` | brotli | 9,107 | **8,412** | **−7.63 %** |
+| `dist/masonry.pkgd.min.js` | raw | 23,450 | **21,974** | **−6.29 %** |
+| `dist/masonry.pkgd.min.js` | gzip | 7,629 | **7,072** | **−7.30 %** |
+| `dist/masonry.pkgd.min.js` | brotli | 6,898 | **6,401** | **−7.20 %** |
+| Visual regression tests | passing | 4 / 4 | 4 / 4 | unchanged |
+| SSR smoke test | passing | ✓ | ✓ | unchanged |
+| **no-jquery gate** | passing | (n/a) | **0 / 0 refs** | new gate |
+| `devDependencies` | count | 5 | 4 | −1 |
+
+### Predicted vs actual
+
+| Prediction | Predicted | Actual |
+|---|---|---|
+| min.js raw | −1,400 to −1,900 B | **−1,476 B** ✅ low end of band |
+| min.js gzip | −480 to −750 B | **−557 B** ✅ middle of band |
+| min.js brotli | similar to gzip | **−497 B** ✅ middle of band |
+| **min.js gzip vs upstream flips below** | yes (−170 to −370 B) | **yes (−295 B)** ✅ middle of range — **THE MILESTONE** |
+| Visual + SSR + no-jquery gates | green | green |
+
+All four size predictions inside their bands. The headline "gz drops below upstream" landed cleanly in the middle.
+
+### Migration notes
+
+- **If you used the vanilla API (`new Masonry('.grid', { … })`):** zero change. Behavior is identical.
+- **If you used the jQuery shim (`$('.grid').masonry({ … })`):** migrate to the vanilla API. The conversion is mechanical — every shim call has a 1-to-1 vanilla equivalent.
+- **CDN consumers:** `dist/masonry.pkgd.min.js` byte content has changed substantially; regenerate SRI hashes.
+- **`npm install masonry-pretext` no longer installs jQuery** as a transitive dep. If your project relies on jquery-from-masonry's-dep-tree (rare, but possible), you'll need to add jQuery as a direct dep.
+
+---
+
 ## v5.0.0-dev.5 — 2026-04-08 — SSR import fix (§ L.2b)
 
 > Tag: `v5.0.0-dev.5` · Improvement: [`005-ssr-import-fix.md`](./improvements/005-ssr-import-fix.md) · **Closes upstream**: [`desandro/masonry#1194`](https://github.com/desandro/masonry/issues/1194), [`#1121`](https://github.com/desandro/masonry/issues/1121), [`#1201`](https://github.com/desandro/masonry/issues/1201)
