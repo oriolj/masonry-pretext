@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.40
+ * Masonry PACKAGED v5.0.0-dev.41
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -937,7 +937,7 @@ var require_masonry = __commonJS({
       Masonry2.prototype = Object.create(Outlayer.prototype);
       Masonry2.prototype.constructor = Masonry2;
       Masonry2.namespace = "masonry";
-      Masonry2.version = true ? "5.0.0-dev.40" : "source";
+      Masonry2.version = true ? "5.0.0-dev.41" : "source";
       Masonry2.fork = "masonry-pretext";
       Masonry2.defaults = Object.assign({}, Outlayer.defaults);
       Masonry2.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
@@ -1444,6 +1444,19 @@ var require_masonry = __commonJS({
         };
         if (opts.fitWidth) {
           out.containerWidth = computeFitContainerWidth(cols, colYs, stride, gutter);
+        }
+        return out;
+      };
+      Masonry2.computeLayouts = function(opts, breakpoints) {
+        var out = {};
+        for (var i = 0; i < breakpoints.length; i++) {
+          var bp = breakpoints[i];
+          var bpOpts = Object.assign({}, opts, {
+            containerWidth: bp.containerWidth,
+            columnWidth: bp.columnWidth
+          });
+          if (bp.gutter !== void 0) bpOpts.gutter = bp.gutter;
+          out[bp.name] = Masonry2.computeLayout(bpOpts);
         }
         return out;
       };

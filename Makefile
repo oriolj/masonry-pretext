@@ -49,6 +49,8 @@ test: build
 	@echo
 	@node test/visual/compute-layout.mjs
 	@echo
+	@node test/visual/compute-layouts.mjs
+	@echo
 	@node test/visual/no-jquery.mjs
 
 test-update: build
@@ -59,6 +61,8 @@ test-update: build
 	@node test/visual/module-smoke.mjs
 	@echo
 	@node test/visual/compute-layout.mjs
+	@echo
+	@node test/visual/compute-layouts.mjs
 	@echo
 	@node test/visual/no-jquery.mjs
 

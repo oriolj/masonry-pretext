@@ -15,6 +15,31 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.41 — 2026-04-09 — Multi-breakpoint `Masonry.computeLayouts` (D.1)
+
+> Tag: `v5.0.0-dev.41` · Improvement: [`041-multi-breakpoint-compute-layouts.md`](./improvements/041-multi-breakpoint-compute-layouts.md) · Closes downstream consumer ask **D.1**
+
+A new static helper `Masonry.computeLayouts(opts, breakpoints)` wraps `Masonry.computeLayout` in a per-breakpoint loop and returns a `{ name → ComputeLayoutResult }` map. **The motivation is responsive SSR**: a server can't know which breakpoint a viewer is on, so it computes layouts for ALL of them up front and emits each set in the rendered HTML; the client picks the right one via `matchMedia`.
+
+```ts
+const layouts = Masonry.computeLayouts(
+  { items: sizes, columnWidth: 0, containerWidth: 0 },
+  [
+    { name: 'mobile',  containerWidth: 360,  columnWidth: 360, gutter: 0  },
+    { name: 'tablet',  containerWidth: 720,  columnWidth: 352, gutter: 16 },
+    { name: 'desktop', containerWidth: 1024, columnWidth: 336, gutter: 16 },
+    { name: 'wide',    containerWidth: 1280, columnWidth: 100, gutter: 16 },
+  ],
+);
+// → { mobile: ComputeLayoutResult, tablet: ..., desktop: ..., wide: ... }
+```
+
+The helper is intentionally a thin wrapper, not a deduper — calling it with two breakpoints that resolve to the same `cols` still runs the placement loop twice. The math is fast enough (`computeLayout` runs in ~0.131 ms for a 5000-item grid per the #020 bench) that the saved complexity is worth more than the saved CPU.
+
+**Item sizes are inherited as-is across breakpoints.** Consumers whose item heights depend on the per-breakpoint column width must recompute the items themselves before calling — that's the next improvement (D.3 / `itemSizer`).
+
+**Cost:** +63 B gzipped on `dist/masonry.pkgd.min.js`. New `compute-layouts.mjs` Node-only test gate runs as part of `make test`, with 4 discriminating cases (agreement / cols-differ / options-propagate / gutter-override).
+
 ### v5.0.0-dev.40 — 2026-04-09 — `'layoutError'` event (D.6)
 
 > Tag: `v5.0.0-dev.40` · Improvement: [`040-layout-error-event.md`](./improvements/040-layout-error-event.md) · Closes downstream consumer ask **D.6**

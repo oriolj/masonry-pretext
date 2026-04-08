@@ -1,6 +1,6 @@
 {
   "name": "masonry-pretext",
-  "version": "5.0.0-dev.40",
+  "version": "5.0.0-dev.41",
   "description": "Cascading grid layout library — modernized fork of masonry-layout with reflow-free text measurement via pretext.",
   "main": "./dist/masonry.cjs",
   "module": "./dist/masonry.mjs",
@@ -35,12 +35,13 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node test/visual/run.mjs && node test/visual/ssr-smoke.mjs && node test/visual/module-smoke.mjs && node test/visual/compute-layout.mjs && node test/visual/no-jquery.mjs",
+    "test": "node test/visual/run.mjs && node test/visual/ssr-smoke.mjs && node test/visual/module-smoke.mjs && node test/visual/compute-layout.mjs && node test/visual/compute-layouts.mjs && node test/visual/no-jquery.mjs",
     "test:visual": "node test/visual/run.mjs",
     "test:visual:update": "node test/visual/run.mjs --update",
     "test:ssr": "node test/visual/ssr-smoke.mjs",
     "test:modules": "node test/visual/module-smoke.mjs",
     "test:compute-layout": "node test/visual/compute-layout.mjs",
+    "test:compute-layouts": "node test/visual/compute-layouts.mjs",
     "test:no-jquery": "node test/visual/no-jquery.mjs",
     "measure": "./scripts/measure.sh"
   },

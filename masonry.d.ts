@@ -412,6 +412,60 @@ export default class Masonry {
    * ```
    */
   static computeLayout(opts: ComputeLayoutOptions): ComputeLayoutResult;
+
+  /**
+   * **Multi-breakpoint helper** (#041 / D.1). Wraps `computeLayout` in a
+   * per-breakpoint loop so a single SSR pass can emit positions for
+   * every viewport width the page might render at. The server doesn't
+   * know which breakpoint a viewer is on, so it computes layouts for
+   * ALL of them up front and emits each set of positions in the rendered
+   * HTML (typically as `data-positions-{name}` attributes or
+   * breakpoint-keyed CSS variables); the client picks the right one via
+   * `matchMedia`.
+   *
+   * The base `opts` is shared across breakpoints (so `items`, `fitWidth`,
+   * `pickColumn`, etc. are inherited); each `Breakpoint` overrides
+   * `containerWidth` / `columnWidth` / `gutter` for its pass.
+   *
+   * Example:
+   *
+   * ```ts
+   * const layouts = Masonry.computeLayouts(
+   *   { items: sizes, columnWidth: 0, containerWidth: 0 },
+   *   [
+   *     { name: 'mobile',  containerWidth: 360,  columnWidth: 360, gutter: 0 },
+   *     { name: 'tablet',  containerWidth: 720,  columnWidth: 352, gutter: 16 },
+   *     { name: 'desktop', containerWidth: 1024, columnWidth: 336, gutter: 16 },
+   *     { name: 'wide',    containerWidth: 1280, columnWidth: 100, gutter: 16 },
+   *   ],
+   * );
+   * // → { mobile: ComputeLayoutResult, tablet: ..., desktop: ..., wide: ... }
+   * ```
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/041-multi-breakpoint-compute-layouts.md
+   */
+  static computeLayouts(
+    opts: ComputeLayoutOptions,
+    breakpoints: Breakpoint[],
+  ): Record<string, ComputeLayoutResult>;
+}
+
+/**
+ * Per-breakpoint override for `Masonry.computeLayouts` (#041 / D.1).
+ * Each Breakpoint shares the items + other ComputeLayoutOptions from
+ * the base call but overrides container/column dimensions.
+ */
+export interface Breakpoint {
+  /** Result key in the returned object. Choose something matching your
+   *  CSS breakpoint names: `'mobile' | 'tablet' | 'desktop' | 'wide'`. */
+  name: string;
+  /** Container width in pixels at this breakpoint. */
+  containerWidth: number;
+  /** Per-column width in pixels at this breakpoint. */
+  columnWidth: number;
+  /** Optional per-breakpoint gutter override. Defaults to the base
+   *  options' gutter (which itself defaults to `0`). */
+  gutter?: number;
 }
 
 /**
