@@ -696,8 +696,8 @@ When all nine boxes are checked, masonry-pretext is the only cascading-grid libr
 |---|---|---|---|---|
 | 0 | `pretextify` callback (client fast path) | ✅ `v5.0.0-dev.9` | [009-pretext-integration.md](./improvements/009-pretext-integration.md) | 1.2-1.3× faster initial layout |
 | 0 | SSR-safe imports + ESM/CJS bundles | ✅ `v5.0.0-dev.5` + `v5.0.0-dev.13` | [005](./improvements/005-ssr-import-fix.md) + [013](./improvements/013-esm-cjs-builds.md) | closes 3 SSR upstream issues |
-| **0.5** | **`static: true` SSR preset** (sibling, unblocked) | 🟡 in flight | `improvements/015-static-ssr-preset.md` (target) | +20-60 B gz, new `static-mode` discriminating fixture (inverse of `resize-observer`) |
-| **1** | **Engine/adapter split (item P)** | ⬜ pending | _filled in after landing_ | refactor, ±0 bytes |
+| **0.5** | **`static: true` SSR preset** (sibling, unblocked) | ✅ `v5.0.0-dev.15` | [015-static-ssr-preset.md](./improvements/015-static-ssr-preset.md) | +20 B gz, new `static-mode` discriminating fixture (inverse of `resize-observer`) |
+| **1** | **Engine/adapter split (item P)** | ✅ `v5.0.0-dev.16` | [016-engine-adapter-split.md](./improvements/016-engine-adapter-split.md) | +164 B gz (over predicted band — esbuild can't inline file-local helpers); 9/9 fixtures pass byte-for-byte; pure `placeItem(size, state)` unblocks Phases 2-5 |
 | **2** | **`Masonry.computeLayout` static helper** | ⬜ pending | _filled in after landing_ | +80-180 B gz, new compute-layout gate |
 | **3** | **`initLayout: false` adoption verification** | ⬜ pending | _filled in after landing_ | +40-120 B gz, new init-layout-false fixture |
 | **4** | **Working SSR + pretext + computeLayout example** | ⬜ pending | _filled in after landing_ | examples/astro + measured CLS=0.00 |

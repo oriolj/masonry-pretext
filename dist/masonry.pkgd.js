@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.15
+ * Masonry PACKAGED v5.0.0-dev.16
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1278,6 +1278,68 @@ var Masonry = (() => {
           }
           return found;
         }
+        function placeItem(size, state) {
+          var columnWidth = state.columnWidth;
+          var cols = state.cols;
+          var colYs = state.colYs;
+          var remainder = size.outerWidth % columnWidth;
+          var mathMethod = remainder && remainder < 1 ? "round" : "ceil";
+          var colSpan = Math[mathMethod](size.outerWidth / columnWidth);
+          colSpan = Math.min(colSpan, cols);
+          var pos;
+          if (state.horizontalOrder) {
+            pos = getHorizontalColPosition(colSpan, size, state);
+            state.horizontalColIndex = pos.newHorizontalColIndex;
+          } else {
+            pos = getTopColPosition(colSpan, colYs, cols);
+          }
+          var x = columnWidth * pos.col;
+          var y = pos.y;
+          var setHeight = y + size.outerHeight;
+          var setMax = colSpan + pos.col;
+          for (var i = pos.col; i < setMax; i++) {
+            colYs[i] = setHeight;
+          }
+          return { x, y, col: pos.col, colSpan };
+        }
+        function getTopColPosition(colSpan, colYs, cols) {
+          var colGroup = getTopColGroup(colSpan, colYs, cols);
+          var minimumY = Math.min.apply(Math, colGroup);
+          return {
+            col: colGroup.indexOf(minimumY),
+            y: minimumY
+          };
+        }
+        function getTopColGroup(colSpan, colYs, cols) {
+          if (colSpan < 2) {
+            return colYs;
+          }
+          var colGroup = [];
+          var groupCount = cols + 1 - colSpan;
+          for (var i = 0; i < groupCount; i++) {
+            colGroup[i] = getColGroupY(i, colSpan, colYs);
+          }
+          return colGroup;
+        }
+        function getColGroupY(col, colSpan, colYs) {
+          if (colSpan < 2) {
+            return colYs[col];
+          }
+          var groupColYs = colYs.slice(col, col + colSpan);
+          return Math.max.apply(Math, groupColYs);
+        }
+        function getHorizontalColPosition(colSpan, size, state) {
+          var col = state.horizontalColIndex % state.cols;
+          var isOver = colSpan > 1 && col + colSpan > state.cols;
+          col = isOver ? 0 : col;
+          var hasSize = size.outerWidth && size.outerHeight;
+          var newHorizontalColIndex = hasSize ? col + colSpan : state.horizontalColIndex;
+          return {
+            col,
+            y: getColGroupY(col, colSpan, state.colYs),
+            newHorizontalColIndex
+          };
+        }
         var baseCreate = proto._create;
         proto._create = function() {
           if (this.options.static) {
@@ -1417,59 +1479,35 @@ var Masonry = (() => {
           } else {
             item.getSize();
           }
-          var remainder = item.size.outerWidth % this.columnWidth;
-          var mathMethod = remainder && remainder < 1 ? "round" : "ceil";
-          var colSpan = Math[mathMethod](item.size.outerWidth / this.columnWidth);
-          colSpan = Math.min(colSpan, this.cols);
-          var colPosMethod = this.options.horizontalOrder ? "_getHorizontalColPosition" : "_getTopColPosition";
-          var colPosition = this[colPosMethod](colSpan, item);
-          var position = {
-            x: this.columnWidth * colPosition.col,
-            y: colPosition.y
+          var state = {
+            cols: this.cols,
+            colYs: this.colYs,
+            columnWidth: this.columnWidth,
+            horizontalColIndex: this.horizontalColIndex,
+            horizontalOrder: this.options.horizontalOrder
           };
-          var setHeight = colPosition.y + item.size.outerHeight;
-          var setMax = colSpan + colPosition.col;
-          for (var i = colPosition.col; i < setMax; i++) {
-            this.colYs[i] = setHeight;
-          }
-          return position;
+          var result = placeItem(item.size, state);
+          this.horizontalColIndex = state.horizontalColIndex;
+          return { x: result.x, y: result.y };
         };
         proto._getTopColPosition = function(colSpan) {
-          var colGroup = this._getTopColGroup(colSpan);
-          var minimumY = Math.min.apply(Math, colGroup);
-          return {
-            col: colGroup.indexOf(minimumY),
-            y: minimumY
-          };
+          return getTopColPosition(colSpan, this.colYs, this.cols);
         };
         proto._getTopColGroup = function(colSpan) {
-          if (colSpan < 2) {
-            return this.colYs;
-          }
-          var colGroup = [];
-          var groupCount = this.cols + 1 - colSpan;
-          for (var i = 0; i < groupCount; i++) {
-            colGroup[i] = this._getColGroupY(i, colSpan);
-          }
-          return colGroup;
+          return getTopColGroup(colSpan, this.colYs, this.cols);
         };
         proto._getColGroupY = function(col, colSpan) {
-          if (colSpan < 2) {
-            return this.colYs[col];
-          }
-          var groupColYs = this.colYs.slice(col, col + colSpan);
-          return Math.max.apply(Math, groupColYs);
+          return getColGroupY(col, colSpan, this.colYs);
         };
         proto._getHorizontalColPosition = function(colSpan, item) {
-          var col = this.horizontalColIndex % this.cols;
-          var isOver = colSpan > 1 && col + colSpan > this.cols;
-          col = isOver ? 0 : col;
-          var hasSize = item.size.outerWidth && item.size.outerHeight;
-          this.horizontalColIndex = hasSize ? col + colSpan : this.horizontalColIndex;
-          return {
-            col,
-            y: this._getColGroupY(col, colSpan)
+          var state = {
+            cols: this.cols,
+            colYs: this.colYs,
+            horizontalColIndex: this.horizontalColIndex
           };
+          var result = getHorizontalColPosition(colSpan, item.size, state);
+          this.horizontalColIndex = result.newHorizontalColIndex;
+          return { col: result.col, y: result.y };
         };
         proto._manageStamp = function(stamp) {
           var stampSize = getSize(stamp);

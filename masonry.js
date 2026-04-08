@@ -116,6 +116,129 @@
     return found;
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Pure-math placement layer (#016 / § engine-adapter split / Phase 1
+  // of PRETEXT_SSR_ROADMAP.md). These functions take pre-measured sizes
+  // and numeric state, and return placement decisions — NO `this`, NO
+  // DOM, NO option lookups. They are called from the DOM-using
+  // `proto._getItemLayoutPosition` adapter, AND will be called from
+  // `Masonry.computeLayout` in Phase 2 for pure-Node SSR pre-computation.
+  //
+  // The design rule: any state the placement decision needs is passed in
+  // as a function argument. `placeItem` mutates `state.colYs` in place
+  // (matches the existing in-place semantics) and writes back the new
+  // `horizontalColIndex` to `state.horizontalColIndex` so the caller
+  // re-reads it after the call. The caller chooses whether `state` is
+  // a wrapper around a Masonry instance (DOM adapter) or a fresh object
+  // built from server-side data (Phase 2 `computeLayout`).
+  //
+  // Behavior is byte-for-byte identical to the inline implementation
+  // these functions replaced — verified by all 9 existing visual
+  // fixtures still passing against their unchanged screenshot baselines.
+  // ─────────────────────────────────────────────────────────────────────
+
+  /**
+   * Compute placement for one item given its size and the current
+   * column state. Pure — no `this`, no DOM, no option lookups.
+   * Mutates `state.colYs` and `state.horizontalColIndex` in place
+   * (same semantics as the proto methods this replaces).
+   *
+   * @param {{outerWidth: number, outerHeight: number}} size
+   * @param {{
+   *   cols: number,
+   *   colYs: number[],
+   *   columnWidth: number,
+   *   horizontalColIndex: number,
+   *   horizontalOrder: boolean,
+   * }} state
+   * @returns {{x: number, y: number, col: number, colSpan: number}}
+   */
+  function placeItem( size, state ) {
+    var columnWidth = state.columnWidth;
+    var cols = state.cols;
+    var colYs = state.colYs;
+
+    // how many columns does this brick span
+    var remainder = size.outerWidth % columnWidth;
+    var mathMethod = remainder && remainder < 1 ? 'round' : 'ceil';
+    var colSpan = Math[ mathMethod ]( size.outerWidth / columnWidth );
+    colSpan = Math.min( colSpan, cols );
+
+    // pick column position — top (default) or horizontal-order
+    var pos;
+    if ( state.horizontalOrder ) {
+      pos = getHorizontalColPosition( colSpan, size, state );
+      // mutate caller's state for the next item
+      state.horizontalColIndex = pos.newHorizontalColIndex;
+    } else {
+      pos = getTopColPosition( colSpan, colYs, cols );
+    }
+
+    // compute absolute (x, y)
+    var x = columnWidth * pos.col;
+    var y = pos.y;
+
+    // mutate colYs in place — set spanned columns to bottom of this item
+    var setHeight = y + size.outerHeight;
+    var setMax = colSpan + pos.col;
+    for ( var i = pos.col; i < setMax; i++ ) {
+      colYs[i] = setHeight;
+    }
+
+    return { x: x, y: y, col: pos.col, colSpan: colSpan };
+  }
+
+  function getTopColPosition( colSpan, colYs, cols ) {
+    var colGroup = getTopColGroup( colSpan, colYs, cols );
+    // get the minimum Y value from the columns
+    var minimumY = Math.min.apply( Math, colGroup );
+    return {
+      col: colGroup.indexOf( minimumY ),
+      y: minimumY,
+    };
+  }
+
+  function getTopColGroup( colSpan, colYs, cols ) {
+    if ( colSpan < 2 ) {
+      // if brick spans only one column, use all the column Ys
+      return colYs;
+    }
+    var colGroup = [];
+    // how many different places could this brick fit horizontally
+    var groupCount = cols + 1 - colSpan;
+    // for each group potential horizontal position
+    for ( var i = 0; i < groupCount; i++ ) {
+      colGroup[i] = getColGroupY( i, colSpan, colYs );
+    }
+    return colGroup;
+  }
+
+  function getColGroupY( col, colSpan, colYs ) {
+    if ( colSpan < 2 ) {
+      return colYs[ col ];
+    }
+    // make an array of colY values for that one group
+    var groupColYs = colYs.slice( col, col + colSpan );
+    // and get the max value of the array
+    return Math.max.apply( Math, groupColYs );
+  }
+
+  // get column position based on horizontal index. #873
+  function getHorizontalColPosition( colSpan, size, state ) {
+    var col = state.horizontalColIndex % state.cols;
+    var isOver = colSpan > 1 && col + colSpan > state.cols;
+    // shift to next row if item can't fit on current row
+    col = isOver ? 0 : col;
+    // don't let zero-size items take up space
+    var hasSize = size.outerWidth && size.outerHeight;
+    var newHorizontalColIndex = hasSize ? col + colSpan : state.horizontalColIndex;
+    return {
+      col: col,
+      y: getColGroupY( col, colSpan, state.colYs ),
+      newHorizontalColIndex: newHorizontalColIndex,
+    };
+  }
+
   // document.fonts.ready first-paint gate (#010 / § P.4 — closes
   // desandro/masonry#1182) AND per-item ResizeObserver auto-relayout
   // (#012 / § P.1b — closes desandro/masonry#1147 + 7 image-overlap
@@ -333,6 +456,15 @@
     this.containerWidth = size && size.innerWidth;
   };
 
+  // The DOM adapter (#016 / Phase 1). Resolves item size via pretextify
+  // (#009) or `item.getSize()` (DOM reflow), then delegates the actual
+  // packing math to the pure-math `placeItem` helper above. Mutations
+  // to `colYs` and `horizontalColIndex` happen inside `placeItem`; the
+  // wrapper `state` object is constructed once per call so the pure
+  // function can mutate primitives in place via the shared reference.
+  // The colYs array reference is the same one that lives on `this`,
+  // so the in-place mutation is visible to subsequent calls without
+  // an explicit copy-back.
   proto._getItemLayoutPosition = function( item ) {
     // Pretext fast path (#009): if `options.pretextify(element)` returns a
     // size, use it as `item.size` and skip `item.getSize()` — which forces a
@@ -345,40 +477,33 @@
     } else {
       item.getSize();
     }
-    // how many columns does this brick span
-    var remainder = item.size.outerWidth % this.columnWidth;
-    var mathMethod = remainder && remainder < 1 ? 'round' : 'ceil';
-    // round if off by 1 pixel, otherwise use ceil
-    var colSpan = Math[ mathMethod ]( item.size.outerWidth / this.columnWidth );
-    colSpan = Math.min( colSpan, this.cols );
-    // use horizontal or top column position
-    var colPosMethod = this.options.horizontalOrder ?
-      '_getHorizontalColPosition' : '_getTopColPosition';
-    var colPosition = this[ colPosMethod ]( colSpan, item );
-    // position the brick
-    var position = {
-      x: this.columnWidth * colPosition.col,
-      y: colPosition.y
-    };
-    // apply setHeight to necessary columns
-    var setHeight = colPosition.y + item.size.outerHeight;
-    var setMax = colSpan + colPosition.col;
-    for ( var i = colPosition.col; i < setMax; i++ ) {
-      this.colYs[i] = setHeight;
-    }
 
-    return position;
+    // Pure-math placement. The state object is the bridge between the
+    // masonry instance and the pure layer — same field names, flat
+    // shape, no `this`. `placeItem` mutates state.colYs in place
+    // (shared reference with this.colYs) and state.horizontalColIndex
+    // for primitive write-back.
+    var state = {
+      cols: this.cols,
+      colYs: this.colYs,
+      columnWidth: this.columnWidth,
+      horizontalColIndex: this.horizontalColIndex,
+      horizontalOrder: this.options.horizontalOrder,
+    };
+    var result = placeItem( item.size, state );
+    this.horizontalColIndex = state.horizontalColIndex;
+
+    return { x: result.x, y: result.y };
   };
 
-  proto._getTopColPosition = function( colSpan ) {
-    var colGroup = this._getTopColGroup( colSpan );
-    // get the minimum Y value from the columns
-    var minimumY = Math.min.apply( Math, colGroup );
+  // Backward-compatible prototype wrappers (#016 / Phase 1). Plugin
+  // authors who reach into masonry's internals via `proto._getX` would
+  // break if these were deleted, so they're kept as thin shims that
+  // delegate to the pure helpers above. They still mutate `this`
+  // identically to the pre-refactor versions.
 
-    return {
-      col: colGroup.indexOf( minimumY ),
-      y: minimumY,
-    };
+  proto._getTopColPosition = function( colSpan ) {
+    return getTopColPosition( colSpan, this.colYs, this.cols );
   };
 
   /**
@@ -386,45 +511,23 @@
    * @returns {Array} colGroup
    */
   proto._getTopColGroup = function( colSpan ) {
-    if ( colSpan < 2 ) {
-      // if brick spans only one column, use all the column Ys
-      return this.colYs;
-    }
-
-    var colGroup = [];
-    // how many different places could this brick fit horizontally
-    var groupCount = this.cols + 1 - colSpan;
-    // for each group potential horizontal position
-    for ( var i = 0; i < groupCount; i++ ) {
-      colGroup[i] = this._getColGroupY( i, colSpan );
-    }
-    return colGroup;
+    return getTopColGroup( colSpan, this.colYs, this.cols );
   };
 
   proto._getColGroupY = function( col, colSpan ) {
-    if ( colSpan < 2 ) {
-      return this.colYs[ col ];
-    }
-    // make an array of colY values for that one group
-    var groupColYs = this.colYs.slice( col, col + colSpan );
-    // and get the max value of the array
-    return Math.max.apply( Math, groupColYs );
+    return getColGroupY( col, colSpan, this.colYs );
   };
 
   // get column position based on horizontal index. #873
   proto._getHorizontalColPosition = function( colSpan, item ) {
-    var col = this.horizontalColIndex % this.cols;
-    var isOver = colSpan > 1 && col + colSpan > this.cols;
-    // shift to next row if item can't fit on current row
-    col = isOver ? 0 : col;
-    // don't let zero-size items take up space
-    var hasSize = item.size.outerWidth && item.size.outerHeight;
-    this.horizontalColIndex = hasSize ? col + colSpan : this.horizontalColIndex;
-
-    return {
-      col: col,
-      y: this._getColGroupY( col, colSpan ),
+    var state = {
+      cols: this.cols,
+      colYs: this.colYs,
+      horizontalColIndex: this.horizontalColIndex,
     };
+    var result = getHorizontalColPosition( colSpan, item.size, state );
+    this.horizontalColIndex = result.newHorizontalColIndex;
+    return { col: result.col, y: result.y };
   };
 
   proto._manageStamp = function( stamp ) {
