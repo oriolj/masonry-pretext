@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.23
+ * Masonry PACKAGED v5.0.0-dev.24
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -553,8 +553,7 @@ var require_item = __commonJS({
         duration = typeof duration == "number" ? duration + "ms" : duration;
         this.css({
           transitionProperty: transitionProps,
-          transitionDuration: duration,
-          transitionDelay: this.staggerDelay || 0
+          transitionDuration: duration
         });
         this.element.addEventListener(transitionEndEvent, this, false);
       };
@@ -598,10 +597,6 @@ var require_item = __commonJS({
       };
       proto.removeTransitionStyles = function() {
         this.css(cleanTransitionStyle);
-      };
-      proto.stagger = function(delay) {
-        delay = isNaN(delay) ? 0 : delay;
-        this.staggerDelay = delay + "ms";
       };
       proto.removeElem = function() {
         this.element.parentNode.removeChild(this.element);
@@ -876,25 +871,14 @@ var require_outlayer = __commonJS({
         };
       };
       proto._processLayoutQueue = function(queue) {
-        this.updateStagger();
-        queue.forEach(function(obj, i) {
-          this._positionItem(obj.item, obj.x, obj.y, obj.isInstant, i);
+        queue.forEach(function(obj) {
+          this._positionItem(obj.item, obj.x, obj.y, obj.isInstant);
         }, this);
       };
-      proto.updateStagger = function() {
-        var stagger = this.options.stagger;
-        if (stagger === null || stagger === void 0) {
-          this.stagger = 0;
-          return;
-        }
-        this.stagger = getMilliseconds(stagger);
-        return this.stagger;
-      };
-      proto._positionItem = function(item, x, y, isInstant, i) {
+      proto._positionItem = function(item, x, y, isInstant) {
         if (isInstant) {
           item.goTo(x, y);
         } else {
-          item.stagger(i * this.stagger);
           item.moveTo(x, y);
         }
       };
@@ -1076,9 +1060,7 @@ var require_outlayer = __commonJS({
         if (!items || !items.length) {
           return;
         }
-        var stagger = this.updateStagger();
-        items.forEach(function(item, i) {
-          item.stagger(i * stagger);
+        items.forEach(function(item) {
           item.reveal();
         });
       };
@@ -1087,9 +1069,7 @@ var require_outlayer = __commonJS({
         if (!items || !items.length) {
           return;
         }
-        var stagger = this.updateStagger();
-        items.forEach(function(item, i) {
-          item.stagger(i * stagger);
+        items.forEach(function(item) {
           item.hide();
         });
       };
@@ -1167,24 +1147,6 @@ var require_outlayer = __commonJS({
         SubClass.prototype = Object.create(Parent.prototype);
         SubClass.prototype.constructor = SubClass;
         return SubClass;
-      }
-      var msUnits = {
-        ms: 1,
-        s: 1e3
-      };
-      function getMilliseconds(time) {
-        if (typeof time == "number") {
-          return time;
-        }
-        var matches = time.match(/(^\d*\.?\d*)(\w*)/);
-        var num = matches && matches[1];
-        var unit = matches && matches[2];
-        if (!num.length) {
-          return 0;
-        }
-        num = parseFloat(num);
-        var mult = msUnits[unit] || 1;
-        return num * mult;
       }
       Outlayer.Item = Item;
       return Outlayer;

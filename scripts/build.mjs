@@ -203,6 +203,31 @@ var dashedVendorProperties = {
         find: `}( window, function factory( EvEmitter, getSize ) {`,
         replace: `}( typeof window !== 'undefined' ? window : {}, function factory( EvEmitter, getSize ) {`,
       },
+      // ── #024 — delete Item.stagger + staggerDelay (item B continued) ────
+      {
+        description: '[#024] item.js — drop transitionDelay (staggerDelay) from css call',
+        find: `  this.css({
+    transitionProperty: transitionProps,
+    transitionDuration: duration,
+    transitionDelay: this.staggerDelay || 0
+  });`,
+        replace: `  this.css({
+    transitionProperty: transitionProps,
+    transitionDuration: duration
+  });`,
+      },
+      {
+        description: '[#024] item.js — delete proto.stagger',
+        find: `// ----- stagger ----- //
+
+proto.stagger = function( delay ) {
+  delay = isNaN( delay ) ? 0 : delay;
+  this.staggerDelay = delay + 'ms';
+};
+
+`,
+        replace: ``,
+      },
     ],
   },
   {
@@ -339,6 +364,143 @@ proto._getItemsForLayout = function( items ) {
     return !item.isIgnored;
   });
 };
+
+`,
+        replace: ``,
+      },
+      // ── #024 — delete stagger machinery (item B) ──────────────────────────
+      // `options.stagger` is unused in masonry-pretext: it never gets set
+      // by the visual fixtures, the Astro/Next.js examples, or any consumer.
+      // The hide/reveal animation system that stagger feeds into is itself
+      // slated for deletion in item A. Strip:
+      //   - proto.updateStagger (the option-to-ms reader)
+      //   - the `i` arg + stagger call in proto._positionItem
+      //   - the stagger calls in proto.reveal / proto.hide
+      //   - msUnits + getMilliseconds (only used by updateStagger)
+      // Plus from item.js:
+      //   - proto.stagger + the staggerDelay state
+      //   - the transitionDelay line in css() that reads staggerDelay
+      {
+        description: '[#024] outlayer.js — delete proto.updateStagger',
+        find: `// set stagger from option in milliseconds number
+proto.updateStagger = function() {
+  var stagger = this.options.stagger;
+  if ( stagger === null || stagger === undefined ) {
+    this.stagger = 0;
+    return;
+  }
+  this.stagger = getMilliseconds( stagger );
+  return this.stagger;
+};
+
+`,
+        replace: ``,
+      },
+      {
+        description: '[#024] outlayer.js — drop updateStagger call + stagger arg from _processLayoutQueue',
+        find: `proto._processLayoutQueue = function( queue ) {
+  this.updateStagger();
+  queue.forEach( function( obj, i ) {
+    this._positionItem( obj.item, obj.x, obj.y, obj.isInstant, i );
+  }, this );
+};`,
+        replace: `proto._processLayoutQueue = function( queue ) {
+  queue.forEach( function( obj ) {
+    this._positionItem( obj.item, obj.x, obj.y, obj.isInstant );
+  }, this );
+};`,
+      },
+      {
+        description: '[#024] outlayer.js — drop stagger arg + call from _positionItem definition',
+        find: `proto._positionItem = function( item, x, y, isInstant, i ) {
+  if ( isInstant ) {
+    // if not transition, just set CSS
+    item.goTo( x, y );
+  } else {
+    item.stagger( i * this.stagger );
+    item.moveTo( x, y );
+  }
+};`,
+        replace: `proto._positionItem = function( item, x, y, isInstant ) {
+  if ( isInstant ) {
+    item.goTo( x, y );
+  } else {
+    item.moveTo( x, y );
+  }
+};`,
+      },
+      {
+        description: '[#024] outlayer.js — drop stagger from proto.reveal',
+        find: `proto.reveal = function( items ) {
+  this._emitCompleteOnItems( 'reveal', items );
+  if ( !items || !items.length ) {
+    return;
+  }
+  var stagger = this.updateStagger();
+  items.forEach( function( item, i ) {
+    item.stagger( i * stagger );
+    item.reveal();
+  });
+};`,
+        replace: `proto.reveal = function( items ) {
+  this._emitCompleteOnItems( 'reveal', items );
+  if ( !items || !items.length ) {
+    return;
+  }
+  items.forEach( function( item ) {
+    item.reveal();
+  });
+};`,
+      },
+      {
+        description: '[#024] outlayer.js — drop stagger from proto.hide',
+        find: `proto.hide = function( items ) {
+  this._emitCompleteOnItems( 'hide', items );
+  if ( !items || !items.length ) {
+    return;
+  }
+  var stagger = this.updateStagger();
+  items.forEach( function( item, i ) {
+    item.stagger( i * stagger );
+    item.hide();
+  });
+};`,
+        replace: `proto.hide = function( items ) {
+  this._emitCompleteOnItems( 'hide', items );
+  if ( !items || !items.length ) {
+    return;
+  }
+  items.forEach( function( item ) {
+    item.hide();
+  });
+};`,
+      },
+      {
+        description: '[#024] outlayer.js — delete msUnits + getMilliseconds (only used by updateStagger)',
+        find: `// ----- helpers ----- //
+
+// how many milliseconds are in each unit
+var msUnits = {
+  ms: 1,
+  s: 1000
+};
+
+// munge time-like parameter into millisecond number
+// '0.4s' -> 40
+function getMilliseconds( time ) {
+  if ( typeof time == 'number' ) {
+    return time;
+  }
+  var matches = time.match( /(^\\d*\\.?\\d*)(\\w*)/ );
+  var num = matches && matches[1];
+  var unit = matches && matches[2];
+  if ( !num.length ) {
+    return 0;
+  }
+  num = parseFloat( num );
+  var mult = msUnits[ unit ] || 1;
+  return num * mult;
+}
 
 `,
         replace: ``,
