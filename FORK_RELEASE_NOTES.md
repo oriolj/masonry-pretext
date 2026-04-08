@@ -15,6 +15,34 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.40 — 2026-04-09 — `'layoutError'` event (D.6)
+
+> Tag: `v5.0.0-dev.40` · Improvement: [`040-layout-error-event.md`](./improvements/040-layout-error-event.md) · Closes downstream consumer ask **D.6**
+
+A new `'layoutError'` event surfaces silent layout failures so multi-tenant frontends can forward them to error trackers (Sentry, Datadog, Rollbar) instead of guessing why an item ended up at `(0, 0)`. The library still positions the item — the event is informational.
+
+```js
+msnry.on('layoutError', function (event) {
+  // event.reason is one of: 'detached' | 'zero-width' | 'colspan-overflow'
+  // event.item, event.cols, event.columnWidth are also exposed
+  Sentry.captureMessage(`masonry layoutError: ${event.reason}`, {
+    extra: { html: event.item.element.outerHTML, cols: event.cols },
+  });
+});
+```
+
+**Reasons in the initial set:**
+
+- `'detached'` — `item.element.parentNode === null` (the element was removed from the DOM between construction and layout)
+- `'zero-width'` — `item.size.outerWidth === 0` (typically a `display: none` item, or one whose CSS dimensions couldn't be measured)
+- `'colspan-overflow'` — the item is wider than the entire grid, so its computed `colSpan` exceeds `cols`
+
+**`'measurement-failed'` is intentionally not in the initial set:** `item.getSize()` already swallows missing-style failures by returning a zero-size object, which `'zero-width'` covers. Adding a try/catch around `getSize` would mask real bugs.
+
+**Hot path stays branchless** for grids that don't subscribe — the new code only runs after the existing `this._events && this._events.layoutError` listener-array check.
+
+**Cost:** +136 B gzipped on `dist/masonry.pkgd.min.js`. Discriminating fixture (`test/visual/pages/layout-error.html`) verified to catch the regression class by manually disabling the emit and watching the assertion fail. New `pageAssert` mechanism in the runner for non-positional discriminators.
+
 ### v5.0.0-dev.39 — 2026-04-09 — Per-instance `silent` option (D.12)
 
 > Tag: `v5.0.0-dev.39` · Improvement: [`039-per-instance-silent.md`](./improvements/039-per-instance-silent.md) · Closes downstream consumer ask **D.12**

@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.38
+ * Masonry PACKAGED v5.0.0-dev.40
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -937,7 +937,7 @@ var require_masonry = __commonJS({
       Masonry.prototype = Object.create(Outlayer.prototype);
       Masonry.prototype.constructor = Masonry;
       Masonry.namespace = "masonry";
-      Masonry.version = true ? "5.0.0-dev.38" : "source";
+      Masonry.version = true ? "5.0.0-dev.40" : "source";
       Masonry.fork = "masonry-pretext";
       Masonry.defaults = Object.assign({}, Outlayer.defaults);
       Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
@@ -1315,6 +1315,28 @@ var require_masonry = __commonJS({
           item.size = pretextSize;
         } else {
           item.getSize();
+        }
+        var listeners = this._events && this._events.layoutError;
+        if (listeners && listeners.length) {
+          var reason = null;
+          if (!item.element.parentNode) {
+            reason = "detached";
+          } else if (!item.size || !item.size.outerWidth) {
+            reason = "zero-width";
+          } else if (this.columnWidth > 0) {
+            var probeColSpan = Math.ceil(item.size.outerWidth / this.columnWidth);
+            if (probeColSpan > this.cols) {
+              reason = "colspan-overflow";
+            }
+          }
+          if (reason) {
+            this.emitEvent("layoutError", [{
+              item,
+              reason,
+              columnWidth: this.columnWidth,
+              cols: this.cols
+            }]);
+          }
         }
         var state = {
           cols: this.cols,

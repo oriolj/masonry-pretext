@@ -35,6 +35,28 @@ export interface MasonryItem {
   position: { x: number; y: number };
 }
 
+/**
+ * Payload for the `'layoutError'` event (#040 / D.6). Fired from
+ * `_getItemLayoutPosition` when an item is in a state that the layout
+ * pass would otherwise silently swallow. The library still positions
+ * the item — this event is informational, for forwarding to error
+ * trackers (Sentry, Datadog, Rollbar) in multi-tenant frontends.
+ *
+ * Reasons:
+ *
+ *   - `'detached'` — `item.element.parentNode === null`
+ *   - `'zero-width'` — `item.size.outerWidth === 0` (typically a
+ *     `display: none` item, or one whose size couldn't be measured)
+ *   - `'colspan-overflow'` — the item is wider than the entire grid,
+ *     so its computed colSpan exceeds `cols`
+ */
+export interface MasonryLayoutErrorEvent {
+  item: MasonryItem;
+  reason: 'detached' | 'zero-width' | 'colspan-overflow';
+  columnWidth: number;
+  cols: number;
+}
+
 export interface MasonryOptions {
   /**
    * CSS selector for items inside the grid container. Items not matching
@@ -294,8 +316,10 @@ export default class Masonry {
   /** Tear down the instance: clean up styles, listeners, internal state. */
   destroy(): void;
 
-  /** Subscribe to a masonry event (`'layoutComplete'`, `'removeComplete'`). */
+  /** Subscribe to a masonry event (`'layoutComplete'`, `'removeComplete'`,
+   *  `'layoutError'` — see {@link MasonryLayoutErrorEvent}). */
   on(eventName: string, listener: (...args: unknown[]) => void): this;
+  on(eventName: 'layoutError', listener: (event: MasonryLayoutErrorEvent) => void): this;
 
   /** Unsubscribe from a masonry event. */
   off(eventName: string, listener: (...args: unknown[]) => void): this;

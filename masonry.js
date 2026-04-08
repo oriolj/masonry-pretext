@@ -679,6 +679,49 @@
       item.getSize();
     }
 
+    // ── #040 / D.6 — `'layoutError'` event ─────────────────────────────────
+    // Surface silent layout failures to the consumer so multi-tenant
+    // frontends can forward them to Sentry / Datadog instead of guessing
+    // why an item ended up at (0, 0). The library still positions the
+    // item — this is informational, not a hard failure. Reasons:
+    //
+    //   - 'detached'         element is no longer in the DOM
+    //   - 'zero-width'       outerWidth === 0 (display:none, hidden, etc.)
+    //   - 'colspan-overflow' computed colSpan > cols (item too wide)
+    //
+    // The 'measurement-failed' reason isn't fired here — `item.getSize()`
+    // already swallows missing-style failures by returning a zero-size
+    // object, which is caught by 'zero-width' on the same call. Adding a
+    // try/catch around getSize would mask real bugs and is not worth the
+    // bytes for a hypothetical future getSize that throws.
+    //
+    // Skipped entirely when no listeners are registered for 'layoutError'
+    // — keeps the hot path branchless on grids that don't opt in. The
+    // detached check is also gated on element.parentNode so SSR adoption
+    // (where parentNode is set during construction) is not affected.
+    var listeners = this._events && this._events.layoutError;
+    if ( listeners && listeners.length ) {
+      var reason = null;
+      if ( !item.element.parentNode ) {
+        reason = 'detached';
+      } else if ( !item.size || !item.size.outerWidth ) {
+        reason = 'zero-width';
+      } else if ( this.columnWidth > 0 ) {
+        var probeColSpan = Math.ceil( item.size.outerWidth / this.columnWidth );
+        if ( probeColSpan > this.cols ) {
+          reason = 'colspan-overflow';
+        }
+      }
+      if ( reason ) {
+        this.emitEvent( 'layoutError', [{
+          item: item,
+          reason: reason,
+          columnWidth: this.columnWidth,
+          cols: this.cols,
+        }] );
+      }
+    }
+
     // Pure-math placement. The state object is the bridge between the
     // masonry instance and the pure layer — same field names, flat
     // shape, no `this`. `placeItem` mutates state.colYs in place

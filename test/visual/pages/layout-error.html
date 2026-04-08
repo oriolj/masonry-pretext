@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: layoutError event (#040 / D.6)</title>
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    /* Item 2 is display:none — masonry's getSize shim returns
+       outerWidth/Height = 0 for hidden elements, which is the
+       'zero-width' layoutError reason we want to discriminate on. */
+    #layout-error .item.hidden { display: none; }
+  </style>
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for the layoutError event (#040 / D.6).
+    Three normal items + one display:none item interleaved between
+    them. Without the layoutError hook the hidden item silently
+    lands at (0, 0) and the layout proceeds; with the hook,
+    `_getItemLayoutPosition` emits 'layoutError' with reason
+    'zero-width' for the hidden item BEFORE the layout pass.
+
+    The fixture sets `__READY = true` only AFTER the event has been
+    captured into `__LAYOUT_ERRORS`. If the event never fires, the
+    test runner times out (no positions ever read), which is the
+    discriminating signal.
+
+    The other 3 items lay out normally — assertion still works on
+    them. The hidden item is excluded from the position assertion
+    via the `:not(.hidden)` selector inside the runner.
+
+    NOTE: this fixture exercises the existing `outerWidth === 0`
+    code path, not a new throw path. Item.getSize() returns the
+    zero-size object, masonry positions it at the top of the
+    leftmost column (no real visual change because it's hidden),
+    AND fires layoutError so the consumer can log it.
+  -->
+  <div id="layout-error" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item hidden"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#layout-error');
+
+    window.__LAYOUT_ERRORS = [];
+
+    var msnry = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+      // Use initLayout: false so we can wire the listener BEFORE
+      // the first layout pass — otherwise _create's initial layout
+      // would fire layoutError before any listener is attached.
+      initLayout: false,
+    });
+
+    msnry.on('layoutError', function (event) {
+      window.__LAYOUT_ERRORS.push({
+        reason: event.reason,
+        cols: event.cols,
+        columnWidth: event.columnWidth,
+        // capture which item via its index — element identity
+        // doesn't survive page.evaluate serialization
+        index: Array.prototype.indexOf.call(grid.children, event.item.element),
+      });
+    });
+
+    msnry.layout();
+
+    // The hidden item still gets positioned via style.left/top — the
+    // event doesn't change masonry's behavior, only surfaces it. Wait
+    // one rAF after layout for any pending event delivery, then signal
+    // ready.
+    requestAnimationFrame(function () {
+      window.__READY = true;
+    });
+  </script>
+
+</body>
+</html>

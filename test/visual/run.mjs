@@ -251,6 +251,38 @@ const cases = [
       { left: '60px',  top: '30px' }, // discriminating: pretextOptions consulted
     ],
   },
+  {
+    // layoutError event (#040 / D.6) — see test/visual/pages/layout-error.html
+    // for the discriminator design. 3 visible items + 1 display:none item
+    // interleaved at index 2. The hidden item triggers a 'zero-width'
+    // layoutError emission; the fixture captures it into __LAYOUT_ERRORS,
+    // and the pageAssert below verifies exactly one entry was captured
+    // with the right reason / index. The 3 visible items still lay out
+    // normally, asserted via the standard position check (with the
+    // `:not(.hidden)` filter to skip the hidden one).
+    name: 'layout-error',
+    page: 'layout-error.html',
+    container: '#layout-error',
+    itemSelector: '.item:not(.hidden)',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      // item 2 is hidden, skipped by itemSelector
+      { left: '120px', top: '0px'  }, // item 3 lands at col 2 (col 2's colYs is still 0
+                                       // because the hidden item's colSpan was 0)
+    ],
+    pageAssert: () => {
+      const errs = window.__LAYOUT_ERRORS;
+      if (!Array.isArray(errs)) return 'window.__LAYOUT_ERRORS not set';
+      if (errs.length !== 1) return `expected exactly 1 layoutError, got ${errs.length}`;
+      const e = errs[0];
+      if (e.reason !== 'zero-width') return `expected reason 'zero-width', got '${e.reason}'`;
+      if (e.index !== 2) return `expected index 2 (the hidden item), got ${e.index}`;
+      if (e.cols !== 3) return `expected cols 3, got ${e.cols}`;
+      if (e.columnWidth !== 60) return `expected columnWidth 60, got ${e.columnWidth}`;
+      return null;
+    },
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -272,12 +304,16 @@ async function runCase(page, c) {
   await gotoFixture(page, c.page);
 
   // ── Layer 1: position assertions ───────────────────────────────────────────
-  const positions = await page.evaluate((sel) => {
-    return Array.from(document.querySelectorAll(`${sel} .item`)).map(el => ({
+  // Cases may set `itemSelector` to override the default `.item` (used by
+  // the layout-error fixture which has `.item` and `.item.hidden` siblings
+  // and only wants the visible ones in the position assertion).
+  const itemSelector = c.itemSelector || '.item';
+  const positions = await page.evaluate(({ sel, itemSel }) => {
+    return Array.from(document.querySelectorAll(`${sel} ${itemSel}`)).map(el => ({
       left: el.style.left,
       top: el.style.top,
     }));
-  }, c.container);
+  }, { sel: c.container, itemSel: itemSelector });
 
   if (positions.length !== c.expected.length) {
     return { ok: false, reason: `expected ${c.expected.length} items, got ${positions.length}` };
@@ -291,6 +327,19 @@ async function runCase(page, c) {
     }
     if (want.top !== null && got.top !== want.top) {
       return { ok: false, reason: `item ${i}: top expected ${want.top} got ${got.top}` };
+    }
+  }
+
+  // ── Layer 1b: optional page-side assertion (custom JS executed in the
+  // fixture's window). The fixture exposes some discriminating state via
+  // window globals (e.g., __LAYOUT_ERRORS for the layoutError event), and
+  // the case's `pageAssert` is a stringified function that returns a
+  // failure reason or null. Used for fixtures whose discriminator can't be
+  // expressed as item positions alone.
+  if (c.pageAssert) {
+    const assertResult = await page.evaluate(c.pageAssert);
+    if (assertResult) {
+      return { ok: false, reason: `pageAssert: ${assertResult}` };
     }
   }
 
