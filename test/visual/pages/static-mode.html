@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: static mode (SSR preset)</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for the `static: true` SSR preset (#015 / § SSR).
+
+    Same shape as resize-observer.html but constructs Masonry with
+    `static: true`. In static mode the per-item ResizeObserver is never
+    constructed, so when item 0 is programmatically resized from 30px →
+    60px AFTER construction, the relayout does NOT fire — item 3 stays at
+    (0, 30) where the initial layout placed it.
+
+    If `static: true` is wired correctly: item 3 = (0, 30)  — NO relayout
+    If `static: true` is broken / missing: item 3 = (60, 30) — ResizeObserver
+                                                                 relayout fired
+
+    This is the exact inverse of the resize-observer fixture's expected
+    positions, which makes it a clean discriminator — the two fixtures
+    can't both pass unless the `static` branch actually opts out.
+  -->
+  <div id="static-mode" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#static-mode');
+    var items = grid.querySelectorAll('.item');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      static: true, // ← the feature under test
+    });
+
+    // Resize item 0 from 30px → 60px AFTER masonry has laid out.
+    // In static mode, the ResizeObserver is not wired — this change
+    // is silently absorbed by the DOM and no relayout fires.
+    items[0].style.height = '60px';
+
+    // Wait the same 3 rAF ticks as resize-observer.html. If the static
+    // branch is broken and the ResizeObserver IS wired up, 3 ticks is
+    // enough for it to fire + schedule + apply a relayout — so the
+    // assertion catches a regression either way.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          window.__READY = true;
+        });
+      });
+    });
+  </script>
+
+</body>
+</html>

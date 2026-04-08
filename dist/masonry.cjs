@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.14
+ * Masonry PACKAGED v5.0.0-dev.15
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1279,8 +1279,11 @@ var require_masonry = __commonJS({
       }
       var baseCreate = proto._create;
       proto._create = function() {
+        if (this.options.static) {
+          this.options.transitionDuration = 0;
+        }
         baseCreate.call(this);
-        if (typeof document !== "undefined" && document.fonts && document.fonts.status !== "loaded") {
+        if (!this.options.static && typeof document !== "undefined" && document.fonts && document.fonts.status !== "loaded") {
           var self1 = this;
           document.fonts.ready.then(function() {
             if (self1.element && self1.element.outlayerGUID) {
@@ -1288,7 +1291,7 @@ var require_masonry = __commonJS({
             }
           });
         }
-        if (typeof ResizeObserver !== "undefined") {
+        if (!this.options.static && typeof ResizeObserver !== "undefined") {
           var self2 = this;
           this._resizeLastSizes = /* @__PURE__ */ new WeakMap();
           var pendingRaf = null;

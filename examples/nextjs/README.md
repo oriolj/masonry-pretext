@@ -32,11 +32,13 @@ new Masonry(ref.current, {
   itemSelector: '.grid-item',
   columnWidth: 240,
   gutter: 16,
-  transitionDuration: 0, // no animated settle on relayout — biggest SSR win
+  static: true, // SSR preset — see main README § "Optimizations for SSR mode"
 });
 ```
 
-See the [main README § "Optimizations for SSR mode"](../../README.md#optimizations-for-ssr-mode) for the reasoning.
+`static: true` (landed in `v5.0.0-dev.15`) is a single flag that forces `transitionDuration: 0`, skips the `document.fonts.ready` deferred layout ([#010](../../improvements/010-document-fonts-ready.md)), and skips per-item `ResizeObserver` construction ([#012](../../improvements/012-per-item-resize-observer.md)). Use it when your grid's items will not change size after first paint — the common SSR case.
+
+If your grid contains lazy-loading images or custom web fonts that may still be loading, leave `static` unset (default) and the dynamic-content machinery stays active. See the [main README § "When NOT to use `static: true`"](../../README.md#optimizations-for-ssr-mode--static-true).
 
 ## Notes
 

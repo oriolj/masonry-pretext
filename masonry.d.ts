@@ -119,6 +119,27 @@ export interface MasonryOptions {
   stagger?: number;
 
   /**
+   * **SSR / static-content preset.** Enable for server-rendered grids
+   * whose items will not change size after first paint. Turning this on
+   * does three things in one flag:
+   *
+   *   1. Forces `transitionDuration: 0` — no animated settle on any
+   *      relayout (including the ones triggered by window resize).
+   *   2. Skips the `document.fonts.ready` deferred layout (#010). Safe
+   *      because static SSR content is measured in its final font.
+   *   3. Skips per-item `ResizeObserver` construction (#012). Safe
+   *      because items don't grow — no lazy images, no dynamic text.
+   *
+   * Default `false`. Set to `true` in Next.js / Astro / SvelteKit SSR
+   * pages to eliminate the hydration flash and the runtime cost of the
+   * dynamic-content machinery. See the README "Server-side rendering
+   * (SSR) and hydration" section.
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/015-static-ssr-preset.md
+   */
+  static?: boolean;
+
+  /**
    * **`masonry-pretext` headline feature.** If set and returns a size,
    * that size is used as `item.size` and `item.getSize()` (which forces
    * a DOM reflow) is skipped entirely. Designed for use with

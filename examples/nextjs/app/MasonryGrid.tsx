@@ -26,11 +26,13 @@ export default function MasonryGrid({ items }: { items: Item[] }) {
       itemSelector: '.grid-item',
       columnWidth: 240,
       gutter: 16,
-      // SSR-mode tuning: no animated settle on hydration or relayout.
-      // Default is '0.4s' — the one option you almost always want to
-      // change for server-rendered content. See main README
-      // § "Optimizations for SSR mode".
-      transitionDuration: 0,
+      // SSR preset (v5.0.0-dev.15+). One flag flips three runtime
+      // behaviors at once: transitionDuration → 0, skips the
+      // document.fonts.ready deferred layout, skips per-item
+      // ResizeObserver construction. Use for server-rendered grids
+      // whose items will not change size after first paint. See main
+      // README § "Optimizations for SSR mode — `static: true`".
+      static: true,
     });
 
     // Clean up on unmount / re-render. destroy() disconnects the per-item

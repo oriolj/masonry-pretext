@@ -127,6 +127,24 @@ const cases = [
     ],
   },
   {
+    // Static mode / SSR preset (#015) — see test/visual/pages/static-mode.html
+    // for the discriminator design. Same fixture shape as resize-observer.html
+    // but with `static: true`, which should skip ResizeObserver wire-up.
+    // Item 0 is resized from 30→60 after construction; because the observer
+    // is never constructed in static mode, the relayout does NOT fire and
+    // item 3 stays at (0, 30) — the exact inverse of the resize-observer
+    // fixture's expected position.
+    name: 'static-mode',
+    page: 'static-mode.html',
+    container: '#static-mode',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '0px',   top: '30px' }, // discriminating: NO relayout fired
+    ],
+  },
+  {
     // Percentage columnWidth + gutter math fix (#014, closes desandro/masonry#1006).
     // See test/visual/pages/percent-cols.html for the discriminator design.
     // Container 240px, gutter 20px, sizer width 20%. Without the fix the

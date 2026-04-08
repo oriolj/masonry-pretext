@@ -120,11 +120,22 @@
   // desandro/masonry#1182) AND per-item ResizeObserver auto-relayout
   // (#012 / § P.1b — closes desandro/masonry#1147 + 7 image-overlap
   // duplicates). Both run in the constructor extension point.
+  //
+  // `options.static` (#015 / § SSR) opts out of BOTH of the above AND
+  // forces `transitionDuration: 0`, for server-rendered grids whose
+  // content will not change after first paint. See the README SSR
+  // section and improvements/015-static-ssr-preset.md.
   var baseCreate = proto._create;
   proto._create = function() {
+    // Static mode: no animations on any relayout. Set before anything
+    // else so item.transition() reads the overridden value.
+    if ( this.options.static ) {
+      this.options.transitionDuration = 0;
+    }
     baseCreate.call( this );
-    // ── #010 — fonts.ready first-paint gate ─────────────────────────────
-    if ( typeof document !== 'undefined' && document.fonts &&
+    // ── #010 — fonts.ready first-paint gate (skipped in static mode) ──
+    if ( !this.options.static &&
+         typeof document !== 'undefined' && document.fonts &&
          document.fonts.status !== 'loaded' ) {
       var self1 = this;
       document.fonts.ready.then( function() {
@@ -133,7 +144,7 @@
         }
       });
     }
-    // ── #012 — per-item ResizeObserver auto-relayout ────────────────────
+    // ── #012 — per-item ResizeObserver (skipped in static mode) ─────────
     // Observe every item element. When any item's size changes (image
     // loads, font swaps, content edits, parent resizes — anything),
     // schedule a relayout via rAF coalescing so multiple changes in one
@@ -146,7 +157,7 @@
     // catch. Pre-populating with getBoundingClientRect (which matches
     // the borderBoxSize the observer delivers) makes every event a
     // legitimate comparison. SSR-safe via the typeof guard.
-    if ( typeof ResizeObserver !== 'undefined' ) {
+    if ( !this.options.static && typeof ResizeObserver !== 'undefined' ) {
       var self2 = this;
       this._resizeLastSizes = new WeakMap();
       var pendingRaf = null;
