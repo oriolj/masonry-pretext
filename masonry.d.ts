@@ -163,6 +163,44 @@ export interface MasonryOptions {
   observeMutations?: boolean;
 
   /**
+   * **Custom column-pick strategy.** Takes the array of Y values for
+   * each valid horizontal position (one entry per "place where this
+   * item could fit"), returns the index of the chosen position. If
+   * unset, masonry picks the leftmost-shortest column (the default
+   * since the original library).
+   *
+   * Strategies enabled by overriding this:
+   *
+   *   - **Rightmost shortest** (use `<=` instead of `<` in the loop):
+   *     ```ts
+   *     pickColumn(colGroup) {
+   *       let min = colGroup[0], idx = 0;
+   *       for (let i = 1; i < colGroup.length; i++) {
+   *         if (colGroup[i] <= min) { min = colGroup[i]; idx = i; }
+   *       }
+   *       return idx;
+   *     }
+   *     ```
+   *
+   *   - **Round-robin** (closure over a counter):
+   *     ```ts
+   *     let counter = 0;
+   *     const pickColumn = (colGroup) => counter++ % colGroup.length;
+   *     ```
+   *
+   *   - **Random**:
+   *     ```ts
+   *     pickColumn: (colGroup) => Math.floor(Math.random() * colGroup.length)
+   *     ```
+   *
+   * Closes upstream `desandro/masonry#811`. Also accepted by
+   * `Masonry.computeLayout` for SSR / pure-Node usage.
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/032-column-pick-strategy.md
+   */
+  pickColumn?: ( colGroup: number[] ) => number;
+
+  /**
    * **`masonry-pretext` headline feature.** If set and returns a size,
    * that size is used as `item.size` and `item.getSize()` (which forces
    * a DOM reflow) is skipped entirely. Designed for use with
@@ -340,6 +378,12 @@ export interface ComputeLayoutOptions {
    *  columns are sized as a percentage of the container — pass the
    *  numeric percent (e.g. `20` for 20%). */
   columnWidthPercent?: number;
+
+  /** Custom column-pick strategy (item I / #032). Takes the array of
+   *  Y values for each valid horizontal position, returns the chosen
+   *  index. Default is leftmost-shortest. See `MasonryOptions.pickColumn`
+   *  for the full doc. */
+  pickColumn?: ( colGroup: number[] ) => number;
 }
 
 /** Output shape from `Masonry.computeLayout`. */

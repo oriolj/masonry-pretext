@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: pickColumn (#032 / item I)</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for `pickColumn` (#032 / item I).
+
+    Default behavior: 4 items in a 3-col 180px container with the
+    LEFTMOST-shortest picker:
+      item 0: col 0, y=0, colYs=[30,0,0]
+      item 1: col 1 (leftmost shortest), y=0, colYs=[30,30,0]
+      item 2: col 2, y=0, colYs=[30,30,30]
+      item 3: col 0 (leftmost shortest among 30/30/30 ties), y=30, colYs=[60,30,30]
+
+    With a RIGHTMOST-shortest picker (uses <= instead of <):
+      item 0: col 0, y=0, colYs=[30,0,0]
+      item 1: col 2 (rightmost shortest among col 1 + col 2 ties at 0),
+              y=0, colYs=[30,0,30]
+      item 2: col 1 (only zero left), y=0, colYs=[30,30,30]
+      item 3: col 2 (rightmost shortest among 30/30/30 ties), y=30,
+              colYs=[30,30,60]
+
+    Item 3 lands at LEFT=120 with rightmost picker vs LEFT=0 with default.
+  -->
+  <div id="pick-column" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    window.__MSNRY = new Masonry('#pick-column', {
+      columnWidth: 60,
+      transitionDuration: 0,
+      // Rightmost-shortest picker — same as default but uses <= so
+      // ties resolve to the LAST equal index, not the first.
+      pickColumn: function (colGroup) {
+        var min = colGroup[0];
+        var idx = 0;
+        for (var i = 1; i < colGroup.length; i++) {
+          if (colGroup[i] <= min) {
+            min = colGroup[i];
+            idx = i;
+          }
+        }
+        return idx;
+      },
+    });
+    window.__READY = true;
+  </script>
+
+</body>
+</html>

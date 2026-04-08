@@ -199,6 +199,26 @@ const cases = [
       { left: '60px',  top: '30px' }, // discriminating: 5th item via grid.appendChild
     ],
   },
+  {
+    // pickColumn callback (#032 / item I) — see test/visual/pages/pick-column.html
+    // for the discriminator design. 4 items in a 3-col 180px container with a
+    // RIGHTMOST-shortest picker (uses <= instead of <). All items walk
+    // right-to-left because every tie resolves to the highest index:
+    //   item 0: colGroup=[0,0,0]   → col 2 (last with val=0) → (120, 0)
+    //   item 1: colGroup=[0,0,30]  → col 1                    → (60,  0)
+    //   item 2: colGroup=[0,30,30] → col 0                    → (0,   0)
+    //   item 3: colGroup=[30,30,30]→ col 2 (last tie)         → (120, 30)
+    // The default LEFTMOST picker would put item 0 at col 0 (left=0).
+    name: 'pick-column',
+    page: 'pick-column.html',
+    container: '#pick-column',
+    expected: [
+      { left: '120px', top: '0px'  }, // discriminating: rightmost picker → col 2
+      { left: '60px',  top: '0px'  },
+      { left: '0px',   top: '0px'  },
+      { left: '120px', top: '30px' }, // discriminating: rightmost picker → col 2
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

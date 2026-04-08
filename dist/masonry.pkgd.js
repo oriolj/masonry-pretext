@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.31
+ * Masonry PACKAGED v5.0.0-dev.32
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -998,7 +998,7 @@ var Masonry = (() => {
             pos = getHorizontalColPosition(colSpan, size, state);
             state.horizontalColIndex = pos.newHorizontalColIndex;
           } else {
-            pos = getTopColPosition(colSpan, colYs, cols);
+            pos = getTopColPosition(colSpan, colYs, cols, state.pickColumn);
           }
           var x = columnWidth * pos.col;
           var y = pos.y;
@@ -1009,13 +1009,24 @@ var Masonry = (() => {
           }
           return { x, y, col: pos.col, colSpan };
         }
-        function getTopColPosition(colSpan, colYs, cols) {
+        function getTopColPosition(colSpan, colYs, cols, pickColumn) {
           var colGroup = getTopColGroup(colSpan, colYs, cols);
-          var minimumY = Math.min.apply(Math, colGroup);
+          var col = pickColumn ? pickColumn(colGroup) : indexOfMin(colGroup);
           return {
-            col: colGroup.indexOf(minimumY),
-            y: minimumY
+            col,
+            y: colGroup[col]
           };
+        }
+        function indexOfMin(arr) {
+          var min = arr[0];
+          var idx = 0;
+          for (var i = 1; i < arr.length; i++) {
+            if (arr[i] < min) {
+              min = arr[i];
+              idx = i;
+            }
+          }
+          return idx;
         }
         function getTopColGroup(colSpan, colYs, cols) {
           if (colSpan < 2) {
@@ -1234,14 +1245,15 @@ var Masonry = (() => {
             colYs: this.colYs,
             columnWidth: this.columnWidth,
             horizontalColIndex: this.horizontalColIndex,
-            horizontalOrder: this.options.horizontalOrder
+            horizontalOrder: this.options.horizontalOrder,
+            pickColumn: this.options.pickColumn
           };
           var result = placeItem(item.size, state);
           this.horizontalColIndex = state.horizontalColIndex;
           return { x: result.x, y: result.y };
         };
         proto._getTopColPosition = function(colSpan) {
-          return getTopColPosition(colSpan, this.colYs, this.cols);
+          return getTopColPosition(colSpan, this.colYs, this.cols, this.options.pickColumn);
         };
         proto._getTopColGroup = function(colSpan) {
           return getTopColGroup(colSpan, this.colYs, this.cols);
@@ -1317,7 +1329,8 @@ var Masonry = (() => {
             colYs,
             columnWidth: stride,
             horizontalColIndex: 0,
-            horizontalOrder: !!opts.horizontalOrder
+            horizontalOrder: !!opts.horizontalOrder,
+            pickColumn: opts.pickColumn
           };
           var positions = new Array(items.length);
           for (var i = 0; i < items.length; i++) {

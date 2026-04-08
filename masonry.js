@@ -204,7 +204,7 @@
       // mutate caller's state for the next item
       state.horizontalColIndex = pos.newHorizontalColIndex;
     } else {
-      pos = getTopColPosition( colSpan, colYs, cols );
+      pos = getTopColPosition( colSpan, colYs, cols, state.pickColumn );
     }
 
     // compute absolute (x, y)
@@ -221,14 +221,27 @@
     return { x: x, y: y, col: pos.col, colSpan: colSpan };
   }
 
-  function getTopColPosition( colSpan, colYs, cols ) {
+  function getTopColPosition( colSpan, colYs, cols, pickColumn ) {
     var colGroup = getTopColGroup( colSpan, colYs, cols );
-    // get the minimum Y value from the columns
-    var minimumY = Math.min.apply( Math, colGroup );
+    // #032 / item I — user-supplied column picker (closes desandro/masonry#811).
+    // Default behavior: leftmost shortest column. If `options.pickColumn` is
+    // set, the user gets the colGroup array (Y values for each valid
+    // horizontal position) and returns which index to use — enabling
+    // round-robin, rightmost-shortest, content-aware, etc. strategies.
+    var col = pickColumn ? pickColumn( colGroup ) : indexOfMin( colGroup );
     return {
-      col: colGroup.indexOf( minimumY ),
-      y: minimumY,
+      col: col,
+      y: colGroup[ col ],
     };
+  }
+
+  function indexOfMin( arr ) {
+    var min = arr[0];
+    var idx = 0;
+    for ( var i = 1; i < arr.length; i++ ) {
+      if ( arr[i] < min ) { min = arr[i]; idx = i; }
+    }
+    return idx;
   }
 
   function getTopColGroup( colSpan, colYs, cols ) {
@@ -604,6 +617,7 @@
       columnWidth: this.columnWidth,
       horizontalColIndex: this.horizontalColIndex,
       horizontalOrder: this.options.horizontalOrder,
+      pickColumn: this.options.pickColumn,
     };
     var result = placeItem( item.size, state );
     this.horizontalColIndex = state.horizontalColIndex;
@@ -618,7 +632,7 @@
   // identically to the pre-refactor versions.
 
   proto._getTopColPosition = function( colSpan ) {
-    return getTopColPosition( colSpan, this.colYs, this.cols );
+    return getTopColPosition( colSpan, this.colYs, this.cols, this.options.pickColumn );
   };
 
   /**
@@ -748,6 +762,7 @@
       columnWidth: stride,
       horizontalColIndex: 0,
       horizontalOrder: !!opts.horizontalOrder,
+      pickColumn: opts.pickColumn,
     };
     var positions = new Array( items.length );
     for ( var i = 0; i < items.length; i++ ) {
