@@ -833,7 +833,7 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | 5b | ResizeObserver: per-item auto-relayout | § P.1b | ⬜ | | **closes 8+ image-overlap issues** |
 | 5c | ResizeObserver: drop getSize() in needsResizeLayout | § P.1c | ⬜ | | |
 | 6 | Batch read/write layout pass | § 1.2 | ⬜ | | biggest perf win without API change |
-| 7 | Pretext integration (opt-in callback) | § 1.1 | ⬜ | | headline fork feature |
+| 7 | Pretext integration (opt-in callback) | § 1.1 | ✅ `v5.0.0-dev.9` | [009-pretext-integration.md](./improvements/009-pretext-integration.md) | **headline feature**; +22 B gz cost; **measured 1.2-1.3× faster layout (17-24% reduction)** across 100-2000 item grids via new bench-pretext.mjs |
 | 8a | `document.fonts.ready` first-paint gate | § P.4 | ⬜ | | closes desandro/masonry#1182 |
 | 8b | MutationObserver auto-layout (opt-in) | § P.2 | ⬜ | | kills the "forgot to call reload" footgun |
 | 9 | Position via `transform: translate3d` | § 1.3 | ⬜ | | compositor-only, no layout invalidation |

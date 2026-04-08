@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: pretextify</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating test for the `pretextify` callback (improvement #009).
+    Every .item in the DOM is the *default* 60×30 size — there are NO
+    h2/h3/h4/w2/w3 size classes here on purpose. The pretextify callback
+    below returns DIFFERENT sizes per item index. The visual runner asserts
+    positions that match the *pretext-derived* layout, not the DOM-derived
+    one. If pretextify is broken and `item.getSize()` runs instead, item 3
+    would land at (0, 30) instead of (60, 30) and the test fails loudly.
+  -->
+  <div id="pretext" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    // Hardcoded sizes per item index — proves the callback is consulted
+    // and DOM measurement is bypassed.
+    var pretextSizes = [
+      { outerWidth: 60, outerHeight: 60 }, // item 0 — taller than DOM (30)
+      { outerWidth: 60, outerHeight: 30 }, // item 1 — DOM-equivalent
+      { outerWidth: 60, outerHeight: 30 }, // item 2 — DOM-equivalent
+      { outerWidth: 60, outerHeight: 30 }, // item 3 — DOM-equivalent
+    ];
+
+    var grid = document.querySelector('#pretext');
+    var items = grid.querySelectorAll('.item');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+      pretextify: function (elem) {
+        var index = Array.prototype.indexOf.call(items, elem);
+        return pretextSizes[index];
+      },
+    });
+    window.__READY = true;
+  </script>
+
+</body>
+</html>

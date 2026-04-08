@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext bench harness</title>
+  <style>
+    /* Bench items have realistic content so DOM measurement is non-trivial:
+       padding, border, line-height, real text. The default 60×30 fixtures
+       in pages/style.css are too uniform — measuring them is too cheap to
+       discriminate between paths. */
+    * { box-sizing: border-box; font-family: sans-serif; }
+    body { margin: 0; padding: 16px; }
+    .bench-item {
+      width: 60px;
+      padding: 8px;
+      border: 1px solid #888;
+      background: #def;
+      font-size: 12px;
+      line-height: 1.4;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    window.__READY = true;
+  </script>
+</body>
+</html>

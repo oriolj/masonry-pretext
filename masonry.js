@@ -95,7 +95,20 @@
   };
 
   proto._getItemLayoutPosition = function( item ) {
-    item.getSize();
+    // Pretext fast path (masonry-pretext #009 / FORK_ROADMAP.md § 1.1): if
+    // `options.pretextify(element, item)` returns a size object, use it as
+    // `item.size` and skip `item.getSize()` — which forces a DOM reflow.
+    // Designed for DOM-free text measurement libraries like
+    // https://github.com/chenglou/pretext, or for pre-computed sizes from a
+    // data file / SSR pass. The returned object only needs `outerWidth` and
+    // `outerHeight` — those are the only fields this method consumes.
+    var pretextify = this.options.pretextify;
+    var pretextSize = pretextify && pretextify( item.element, item );
+    if ( pretextSize ) {
+      item.size = pretextSize;
+    } else {
+      item.getSize();
+    }
     // how many columns does this brick span
     var remainder = item.size.outerWidth % this.columnWidth;
     var mathMethod = remainder && remainder < 1 ? 'round' : 'ceil';

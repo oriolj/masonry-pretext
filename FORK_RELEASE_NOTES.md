@@ -17,6 +17,86 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.9 — 2026-04-08 — Pretext integration: `pretextify` callback (§ 1.1) — **HEADLINE FEATURE**
+
+> Tag: `v5.0.0-dev.9` · Improvement: [`009-pretext-integration.md`](./improvements/009-pretext-integration.md)
+
+### Headline
+
+The reason the fork is named **masonry-pretext**. Added a `pretextify(element, item)` option callback to Masonry: if set and returns `{outerWidth, outerHeight}`, that size is used as-is and `item.getSize()` (which forces a DOM reflow) is **skipped entirely**. Designed to plug into [`@chenglou/pretext`](https://www.npmjs.com/package/@chenglou/pretext) for arithmetic text measurement against cached font metrics, but **library-agnostic on purpose** — works with any DOM-free measurement library, pre-computed sizes from a data file, server-side measurement, or hardcoded fixture values.
+
+### Measured performance
+
+**`test/visual/bench-pretext.mjs`** — a new Playwright-driven microbenchmark, checked in as a permanent tool:
+
+| Items | DOM measurement (median) | `pretextify` (median) | Speedup |
+|---:|---:|---:|---:|
+| 100 | 2.70 ms | 2.20 ms | **1.23×** (−18.5 %) |
+| 500 | 12.60 ms | 9.60 ms | **1.31×** (−23.8 %) |
+| 1,000 | 24.40 ms | 20.20 ms | **1.21×** (−17.2 %) |
+| 2,000 | 53.40 ms | 41.90 ms | **1.27×** (−21.5 %) |
+
+Consistently **~20-25 % faster initial layout** across grid sizes. The savings are smaller than the "5-10× faster" mental model you might assume from "skip per-item reflows" because **Masonry already does batched read/write** — the first `getSize()` flushes the layout, subsequent reads return cached values. The pretext fast path skips that one reflow + the per-item function-call overhead, which works out to ~20 % of total layout time. **Real, measurable, durable.**
+
+### Usage
+
+```js
+import { prepare, layout } from '@chenglou/pretext';
+
+const cache = new WeakMap();
+const FONT = '16px/1.5 Inter, sans-serif';
+
+new Masonry('.grid', {
+  columnWidth: 280,
+  pretextify(elem) {
+    let prepared = cache.get(elem);
+    if (!prepared) {
+      prepared = prepare(elem.dataset.text || elem.textContent, FONT);
+      cache.set(elem, prepared);
+    }
+    const { height } = layout(prepared, 280, 24);
+    return { outerWidth: 280, outerHeight: height };
+  },
+});
+```
+
+The callback's lookup must be **O(1)** (`WeakMap`/`Map`/cached `prepare()` result). An O(N) per-call lookup will erase the savings — see the bench-discovered calibration lesson in `improvements/009-pretext-integration.md`.
+
+### Added
+
+- **`pretextify` option** in `masonry.js`. The first user-facing feature added in the fork (improvements 001-008 were build, deletion, SSR fixes).
+- **`test/visual/pages/pretext.html`** — discriminating fixture: 4 items with default 60×30 DOM size, `pretextify` callback returns variable heights, expected positions reflect the pretext-derived layout. Item 3 specifically lands at `(60, 30)` not `(0, 30)` — the position assertion catches any wiring regression.
+- **`test/visual/bench-pretext.mjs`** — Playwright-driven microbenchmark. `node test/visual/bench-pretext.mjs` runs 500 items × 30 runs by default. Supports `--items=N` and `--runs=N`.
+- **5th visual fixture in `make test`.** Was 4 visual + SSR + no-jquery (3 gates), now 5 visual + SSR + no-jquery.
+
+### Numbers
+
+| File | Metric | pre-009 | v5.0.0-dev.9 | Δ |
+|---|---|---:|---:|---:|
+| `masonry.js` source | raw | 7,510 | 8,220 | +710 B (mostly the doc comment, stripped by minifier) |
+| `dist/masonry.pkgd.min.js` | raw | 21,458 | **21,519** | **+61 B (+0.28 %)** |
+| `dist/masonry.pkgd.min.js` | gzip | 6,871 | **6,893** | **+22 B (+0.32 %)** |
+| `dist/masonry.pkgd.min.js` | brotli | 6,202 | **6,227** | **+25 B (+0.40 %)** |
+| Visual regression tests | passing | 4 / 4 | **5 / 5** | +1 (pretext fixture) |
+| SSR + no-jquery gates | passing | ✓ + ✓ | ✓ + ✓ | unchanged |
+
+### vs upstream-frozen v4.2.2
+
+| Metric | v4.2.2 | v5.0.0-dev.9 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,103 | **21,519** | **−2,584 B (−10.72 %)** |
+| `dist/masonry.pkgd.min.js` gzip | 7,367 | **6,893** | **−474 B (−6.43 %)** |
+| `dist/masonry.pkgd.min.js` brotli | 6,601 | **6,227** | **−374 B (−5.67 %)** |
+
+The fork is **still over 10 % smaller than upstream raw and 6 % smaller gzipped — even with the headline feature added**. Cost of pretext integration: +22 gzipped bytes for a 17-24 % runtime speedup on opted-in grids.
+
+### Migration notes
+
+- **None for existing users.** `pretextify` is opt-in. Code that doesn't set the option is unaffected — `item.getSize()` runs as before.
+- **CDN consumers**: regenerate SRI hashes (bundle bytes have changed).
+
+---
+
 ## v5.0.0-dev.8 — 2026-04-08 — Delete unused fizzy-ui-utils methods (§ L.4 partial)
 
 > Tag: `v5.0.0-dev.8` · Improvement: [`008-delete-unused-fizzy-utils.md`](./improvements/008-delete-unused-fizzy-utils.md)

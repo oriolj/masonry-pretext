@@ -84,6 +84,26 @@ const cases = [
       { left: '0px',  top: '30px' },
     ],
   },
+  {
+    // Pretextify (#009): all 4 items are default 60×30 in the DOM, but the
+    // pretextify callback returns variable heights per item. The expected
+    // positions reflect the pretext-derived layout, NOT the DOM-derived one.
+    // If pretextify is broken (callback ignored, item.getSize() runs):
+    //   item 3 would land at (0, 30) because col 0 ends at 30 and ties with
+    //   cols 1/2 at 30, picking the leftmost.
+    // With pretextify working (item 0's outerHeight=60 from the callback):
+    //   col 0 ends at 60, cols 1/2 end at 30 — item 3 picks col 1 (leftmost
+    //   shortest), landing at (60, 30).
+    name: 'pretext',
+    page: 'pretext.html',
+    container: '#pretext',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '60px',  top: '30px' }, // discriminating: pretext → col 1, DOM → col 0
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

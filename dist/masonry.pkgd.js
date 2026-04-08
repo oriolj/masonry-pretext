@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.8
+ * Masonry PACKAGED v5.0.0-dev.9
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1269,7 +1269,13 @@ var Masonry = (() => {
           this.containerWidth = size && size.innerWidth;
         };
         proto._getItemLayoutPosition = function(item) {
-          item.getSize();
+          var pretextify = this.options.pretextify;
+          var pretextSize = pretextify && pretextify(item.element, item);
+          if (pretextSize) {
+            item.size = pretextSize;
+          } else {
+            item.getSize();
+          }
           var remainder = item.size.outerWidth % this.columnWidth;
           var mathMethod = remainder && remainder < 1 ? "round" : "ceil";
           var colSpan = Math[mathMethod](item.size.outerWidth / this.columnWidth);
