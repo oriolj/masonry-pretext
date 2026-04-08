@@ -15,6 +15,39 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.48 — 2026-04-09 — `msnry.diagnose()` (D.11)
+
+> Tag: `v5.0.0-dev.48` · Improvement: [`048-diagnose.md`](./improvements/048-diagnose.md) · Closes downstream consumer ask **D.11**
+
+A new `msnry.diagnose()` instance method returns a typed `MasonryDiagnostic` snapshot of the instance's current state. **Standardized debug shape** that dev tools / testing frameworks can consume programmatically instead of parsing console logs.
+
+```ts
+const d = msnry.diagnose();
+// {
+//   cols: 3,
+//   columnWidth: 60,
+//   containerWidth: 180,
+//   containerHeight: 60,
+//   items: [
+//     { element, position: { x, y }, size: { outerWidth, outerHeight }, observerWired: true },
+//     ...
+//   ],
+//   observers: {
+//     resize: 'wired',                // | 'wired (dynamicItems)' | 'skipped' | 'skipped (static mode)' | 'skipped (hybrid armed)'
+//     mutation: 'skipped',            // | 'wired'
+//     fontsReady: 'fired',            // | 'pending' | 'skipped'
+//   },
+//   lastLayoutTimestamp: 1712687234567,
+//   lastRelayoutReason: 'item-resize', // | 'window-resize' | 'mutation' | 'fonts-loaded' | null
+// }
+```
+
+The library tracks `lastLayoutTimestamp` via a thin wrapper around `proto.layout` (records `Date.now()` on every layout pass) and `lastRelayoutReason` via assignments at the four observer / hook callsites (fonts.ready callback, ResizeObserver rAF, MutationObserver rAF, window-resize hybrid handoff). User-driven `msnry.layout()` calls leave the reason as `null`.
+
+**Cost:** +319 B gzipped on `dist/masonry.pkgd.min.js` — slightly above the predicted band because of the human-readable status strings (each unique literal in the observer-status cascade adds ~15 B that doesn't compress). Documented in the improvement file as a candidate for a future simplify pass.
+
+**Note:** the diagnose result contains live `Element` references in the items list. `JSON.stringify(diagnostic)` won't work directly — strip the elements first if you need a serializable form.
+
 ### v5.0.0-dev.47 — 2026-04-09 — `pause()` / `resume()` (D.10)
 
 > Tag: `v5.0.0-dev.47` · Improvement: [`047-pause-resume.md`](./improvements/047-pause-resume.md) · Closes downstream consumer ask **D.10**

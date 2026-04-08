@@ -486,6 +486,7 @@
       var self1 = this;
       document.fonts.ready.then( function() {
         if ( !self1._destroyed ) {
+          self1._lastRelayoutReason = 'fonts-loaded';
           self1.layout();
         }
       });
@@ -548,6 +549,7 @@
           pendingMutationRaf = null;
           if ( self3._destroyed || self3._paused ) return;
           self3.reloadItems();
+          self3._lastRelayoutReason = 'mutation';
           self3.layout();
         });
       });
@@ -584,7 +586,10 @@
       if ( changed && pendingRaf === null ) {
         pendingRaf = requestAnimationFrame( function() {
           pendingRaf = null;
-          if ( !self._destroyed && !self._paused ) self.layout();
+          if ( !self._destroyed && !self._paused ) {
+            self._lastRelayoutReason = 'item-resize';
+            self.layout();
+          }
         });
       }
     });
@@ -654,6 +659,68 @@
     this._ignoreMutations = true;
     try { return basePrepended.call( this, elems ); }
     finally { this._ignoreMutations = false; }
+  };
+
+  // ── #048 / D.11 — diagnose() structured snapshot ─────────────────
+  // Returns a `MasonryDiagnostic` object describing the current state
+  // of the instance — cols, columnWidth, container size, items list
+  // (with positions + sizes + observer state), observer status,
+  // last layout timestamp, last relayout reason. Standardized
+  // shape that dev tools / testing frameworks can consume
+  // programmatically instead of parsing console logs.
+  //
+  // Each consumer of masonry that wanted this used to write its own
+  // ad-hoc dump function (`window.debugMasonry()`); a built-in version
+  // saves that boilerplate and gives a consistent shape across
+  // projects.
+  proto.diagnose = function() {
+    var observerStatus = 'skipped';
+    if ( this._resizeObserver ) {
+      observerStatus = this.options.static && this.options.dynamicItems
+        ? 'wired (dynamicItems)'
+        : 'wired';
+    } else if ( this.options.static === 'until-resize' ) {
+      observerStatus = 'skipped (hybrid armed)';
+    } else if ( this.options.static ) {
+      observerStatus = 'skipped (static mode)';
+    }
+    var fontsReadyStatus = 'skipped';
+    if ( !this.options.static && typeof document !== 'undefined' &&
+         document.fonts ) {
+      fontsReadyStatus = document.fonts.status === 'loaded' ? 'fired' : 'pending';
+    }
+    var items = this.items.map( function( item ) {
+      return {
+        element: item.element,
+        position: { x: item.position.x, y: item.position.y },
+        size: { outerWidth: item.size.outerWidth, outerHeight: item.size.outerHeight },
+        observerWired: !!( this._resizeLastSizes && this._resizeLastSizes.has( item.element ) ),
+      };
+    }, this );
+    return {
+      cols: this.cols,
+      columnWidth: this.columnWidth,
+      containerWidth: this.containerWidth,
+      containerHeight: this.maxY,
+      items: items,
+      observers: {
+        resize: observerStatus,
+        mutation: this._mutationObserver ? 'wired' : 'skipped',
+        fontsReady: fontsReadyStatus,
+      },
+      lastLayoutTimestamp: this._lastLayoutTimestamp || 0,
+      lastRelayoutReason: this._lastRelayoutReason || null,
+    };
+  };
+
+  // Track last layout timestamp + reason for diagnose(). Wraps the
+  // base layout so the timestamp is updated whenever a layout pass
+  // completes. The reason is set by the various callers (resize
+  // override, observer callbacks, etc.) before they call layout().
+  var baseLayout = proto.layout;
+  proto.layout = function() {
+    this._lastLayoutTimestamp = Date.now();
+    return baseLayout.call( this );
   };
 
   // ── #047 / D.10 — pause / resume ─────────────────────────────────
@@ -1036,6 +1103,7 @@
         }
       }
     }
+    this._lastRelayoutReason = 'window-resize';
     this.layout();
   };
 

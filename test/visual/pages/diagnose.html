@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: diagnose() (#048 / D.11)</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for msnry.diagnose() (#048 / D.11). 4 items
+    in a 3-col 180px container, default options. After construction
+    we call diagnose() and stash the result on window.__DIAGNOSTIC.
+
+    The fixture is just a vehicle for the pageAssert that exercises
+    the diagnose() shape: cols, columnWidth, containerWidth, items
+    list, observer status, lastLayoutTimestamp (sanity-checked > 0),
+    lastRelayoutReason (null because no observer-driven relayout
+    has fired yet).
+
+    Layout assertion verifies the standard 3-col layout still works.
+  -->
+  <div id="diagnose" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#diagnose');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+    });
+
+    window.__DIAGNOSTIC = window.__MSNRY.diagnose();
+
+    window.__READY = true;
+  </script>
+
+</body>
+</html>

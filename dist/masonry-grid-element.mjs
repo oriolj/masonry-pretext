@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.47
+ * Masonry PACKAGED v5.0.0-dev.48
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -937,7 +937,7 @@ var require_masonry = __commonJS({
       Masonry.prototype = Object.create(Outlayer.prototype);
       Masonry.prototype.constructor = Masonry;
       Masonry.namespace = "masonry";
-      Masonry.version = true ? "5.0.0-dev.47" : "source";
+      Masonry.version = true ? "5.0.0-dev.48" : "source";
       Masonry.fork = "masonry-pretext";
       Masonry.defaults = Object.assign({}, Outlayer.defaults);
       Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
@@ -1182,6 +1182,7 @@ var require_masonry = __commonJS({
           var self1 = this;
           document.fonts.ready.then(function() {
             if (!self1._destroyed) {
+              self1._lastRelayoutReason = "fonts-loaded";
               self1.layout();
             }
           });
@@ -1204,6 +1205,7 @@ var require_masonry = __commonJS({
               pendingMutationRaf = null;
               if (self3._destroyed || self3._paused) return;
               self3.reloadItems();
+              self3._lastRelayoutReason = "mutation";
               self3.layout();
             });
           });
@@ -1231,7 +1233,10 @@ var require_masonry = __commonJS({
           if (changed && pendingRaf === null) {
             pendingRaf = requestAnimationFrame(function() {
               pendingRaf = null;
-              if (!self._destroyed && !self._paused) self.layout();
+              if (!self._destroyed && !self._paused) {
+                self._lastRelayoutReason = "item-resize";
+                self.layout();
+              }
             });
           }
         });
@@ -1286,6 +1291,47 @@ var require_masonry = __commonJS({
         } finally {
           this._ignoreMutations = false;
         }
+      };
+      proto.diagnose = function() {
+        var observerStatus = "skipped";
+        if (this._resizeObserver) {
+          observerStatus = this.options.static && this.options.dynamicItems ? "wired (dynamicItems)" : "wired";
+        } else if (this.options.static === "until-resize") {
+          observerStatus = "skipped (hybrid armed)";
+        } else if (this.options.static) {
+          observerStatus = "skipped (static mode)";
+        }
+        var fontsReadyStatus = "skipped";
+        if (!this.options.static && typeof document !== "undefined" && document.fonts) {
+          fontsReadyStatus = document.fonts.status === "loaded" ? "fired" : "pending";
+        }
+        var items = this.items.map(function(item) {
+          return {
+            element: item.element,
+            position: { x: item.position.x, y: item.position.y },
+            size: { outerWidth: item.size.outerWidth, outerHeight: item.size.outerHeight },
+            observerWired: !!(this._resizeLastSizes && this._resizeLastSizes.has(item.element))
+          };
+        }, this);
+        return {
+          cols: this.cols,
+          columnWidth: this.columnWidth,
+          containerWidth: this.containerWidth,
+          containerHeight: this.maxY,
+          items,
+          observers: {
+            resize: observerStatus,
+            mutation: this._mutationObserver ? "wired" : "skipped",
+            fontsReady: fontsReadyStatus
+          },
+          lastLayoutTimestamp: this._lastLayoutTimestamp || 0,
+          lastRelayoutReason: this._lastRelayoutReason || null
+        };
+      };
+      var baseLayout = proto.layout;
+      proto.layout = function() {
+        this._lastLayoutTimestamp = Date.now();
+        return baseLayout.call(this);
       };
       proto.pause = function() {
         this._paused = true;
@@ -1482,6 +1528,7 @@ var require_masonry = __commonJS({
             }
           }
         }
+        this._lastRelayoutReason = "window-resize";
         this.layout();
       };
       Masonry.computeLayout = function(opts) {

@@ -57,6 +57,33 @@ export interface MasonryLayoutErrorEvent {
   cols: number;
 }
 
+/**
+ * Return shape from `msnry.diagnose()` (#048 / D.11). Standardized
+ * dev/debug snapshot of an instance's state.
+ */
+export interface MasonryDiagnostic {
+  cols: number;
+  columnWidth: number;
+  containerWidth: number;
+  containerHeight: number;
+  items: Array<{
+    element: Element;
+    position: { x: number; y: number };
+    size: { outerWidth: number; outerHeight: number };
+    observerWired: boolean;
+  }>;
+  observers: {
+    resize: 'wired' | 'wired (dynamicItems)' | 'skipped' |
+            'skipped (static mode)' | 'skipped (hybrid armed)';
+    mutation: 'wired' | 'skipped';
+    fontsReady: 'pending' | 'fired' | 'skipped';
+  };
+  lastLayoutTimestamp: number;
+  lastRelayoutReason:
+    | 'manual' | 'window-resize' | 'item-resize'
+    | 'mutation' | 'fonts-loaded' | null;
+}
+
 export interface MasonryOptions {
   /**
    * CSS selector for items inside the grid container. Items not matching
@@ -500,6 +527,30 @@ export default class Masonry {
   pause(): void;
   /** Counterpart to `pause()`. Triggers one catch-up `layout()` pass. */
   resume(): void;
+
+  /**
+   * **Structured state snapshot** (#048 / D.11). Returns a typed
+   * object describing the current state of the instance — cols,
+   * column width, container size, items list (with positions + sizes
+   * + observer state), observer status, last layout timestamp, last
+   * relayout reason. Standardized shape that dev tools / testing
+   * frameworks can consume programmatically instead of parsing
+   * console logs.
+   *
+   * Use cases:
+   *
+   *   - Debugging silent failures in multi-tenant frontends
+   *     (consumer's debug helper, dev tools, browser extensions)
+   *   - Asserting layout state from end-to-end tests
+   *   - Forwarding to error trackers when something goes wrong
+   *
+   * The shape is intentionally flat and JSON-serializable EXCEPT
+   * for the `element` references in the items list. Strip those if
+   * you need to JSON.stringify the result.
+   *
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/048-diagnose.md
+   */
+  diagnose(): MasonryDiagnostic;
 
   /** Subscribe to a masonry event (`'layoutComplete'`, `'removeComplete'`,
    *  `'layoutError'` — see {@link MasonryLayoutErrorEvent}). */

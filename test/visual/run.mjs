@@ -252,6 +252,52 @@ const cases = [
     ],
   },
   {
+    // diagnose() (#048 / D.11) — see test/visual/pages/diagnose.html.
+    // 4 items in a 3-col 180px container, default options. The
+    // pageAssert exercises every field of the MasonryDiagnostic shape.
+    name: 'diagnose',
+    page: 'diagnose.html',
+    container: '#diagnose',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '0px',   top: '30px' },
+    ],
+    pageAssert: () => {
+      const d = window.__DIAGNOSTIC;
+      if (!d) return '__DIAGNOSTIC not captured';
+      if (d.cols !== 3) return `cols expected 3, got ${d.cols}`;
+      if (d.columnWidth !== 60) return `columnWidth expected 60, got ${d.columnWidth}`;
+      if (d.containerWidth !== 180) return `containerWidth expected 180, got ${d.containerWidth}`;
+      if (d.containerHeight !== 60) return `containerHeight expected 60, got ${d.containerHeight}`;
+      if (!Array.isArray(d.items)) return 'items not an array';
+      if (d.items.length !== 4) return `items length expected 4, got ${d.items.length}`;
+      // Each item should have element + position + size + observerWired.
+      for (let i = 0; i < d.items.length; i++) {
+        const it = d.items[i];
+        if (!it.element) return `item ${i}: missing element`;
+        if (typeof it.position?.x !== 'number') return `item ${i}: position.x not a number`;
+        if (typeof it.position?.y !== 'number') return `item ${i}: position.y not a number`;
+        if (typeof it.size?.outerWidth !== 'number') return `item ${i}: size.outerWidth not a number`;
+        if (typeof it.observerWired !== 'boolean') return `item ${i}: observerWired not a boolean`;
+        // All items should be observer-wired (default options, no static mode).
+        if (!it.observerWired) return `item ${i}: expected observerWired=true (default options)`;
+      }
+      // Observer status: resize wired (default), mutation skipped (no observeMutations),
+      // fontsReady fired (assume the test page's fonts are already loaded).
+      if (d.observers.resize !== 'wired') return `resize observer status expected 'wired', got ${d.observers.resize}`;
+      if (d.observers.mutation !== 'skipped') return `mutation observer status expected 'skipped', got ${d.observers.mutation}`;
+      // fontsReady is timing-dependent — accept either 'fired' or 'pending' as long as it's not 'skipped'.
+      if (d.observers.fontsReady === 'skipped') return `fontsReady status expected 'fired'/'pending', got 'skipped'`;
+      if (typeof d.lastLayoutTimestamp !== 'number') return 'lastLayoutTimestamp not a number';
+      if (d.lastLayoutTimestamp <= 0) return `lastLayoutTimestamp expected > 0, got ${d.lastLayoutTimestamp}`;
+      // No observer has fired yet, so lastRelayoutReason is null.
+      if (d.lastRelayoutReason !== null) return `lastRelayoutReason expected null, got ${d.lastRelayoutReason}`;
+      return null;
+    },
+  },
+  {
     // pause/resume (#047 / D.10) — see test/visual/pages/pause-resume.html
     // for the discriminator design. After construction, calls
     // msnry.pause(), mutates item 0's height (would normally trigger
