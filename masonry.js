@@ -43,25 +43,116 @@
 
   var proto = Masonry.prototype;
 
-  // document.fonts.ready first-paint gate (#010 / FORK_ROADMAP.md § P.4 —
-  // closes desandro/masonry#1182). When a custom font hasn't loaded at
-  // construction time, item heights are wrong and the layout overlaps until
-  // something triggers a relayout. Schedule a deferred layout when fonts
-  // finish loading. Idempotent: if fonts are already loaded the guard
-  // skips, and if the instance was destroyed before the promise resolves
-  // the alive-check skips.
+  // document.fonts.ready first-paint gate (#010 / § P.4 — closes
+  // desandro/masonry#1182) AND per-item ResizeObserver auto-relayout
+  // (#012 / § P.1b — closes desandro/masonry#1147 + 7 image-overlap
+  // duplicates). Both run in the constructor extension point.
   var baseCreate = proto._create;
   proto._create = function() {
     baseCreate.call( this );
+    // ── #010 — fonts.ready first-paint gate ─────────────────────────────
     if ( typeof document !== 'undefined' && document.fonts &&
          document.fonts.status !== 'loaded' ) {
-      var self = this;
+      var self1 = this;
       document.fonts.ready.then( function() {
-        if ( self.element && self.element.outlayerGUID ) {
-          self.layout();
+        if ( self1.element && self1.element.outlayerGUID ) {
+          self1.layout();
         }
       });
     }
+    // ── #012 — per-item ResizeObserver auto-relayout ────────────────────
+    // Observe every item element. When any item's size changes (image
+    // loads, font swaps, content edits, parent resizes — anything),
+    // schedule a relayout via rAF coalescing so multiple changes in one
+    // frame collapse to a single layout() call. Comparison is against a
+    // pre-populated `_resizeLastSizes` WeakMap to handle the
+    // "size changes between observe() and first delivery" race correctly:
+    // ResizeObserver delivers the first event with the size at delivery
+    // time, not observe time, so a naïve "skip first event" approach
+    // would silently miss the very kind of change this hook exists to
+    // catch. Pre-populating with getBoundingClientRect (which matches
+    // the borderBoxSize the observer delivers) makes every event a
+    // legitimate comparison. SSR-safe via the typeof guard.
+    if ( typeof ResizeObserver !== 'undefined' ) {
+      var self2 = this;
+      this._resizeLastSizes = new WeakMap();
+      var pendingRaf = null;
+      this._resizeObserver = new ResizeObserver( function( entries ) {
+        var changed = false;
+        for ( var i = 0; i < entries.length; i++ ) {
+          var entry = entries[i];
+          var box = entry.borderBoxSize && entry.borderBoxSize[0];
+          var w = box ? box.inlineSize : entry.contentRect.width;
+          var h = box ? box.blockSize : entry.contentRect.height;
+          var prev = self2._resizeLastSizes.get( entry.target );
+          if ( prev && ( prev.width !== w || prev.height !== h ) ) {
+            changed = true;
+          }
+          self2._resizeLastSizes.set( entry.target, { width: w, height: h });
+        }
+        if ( changed && pendingRaf === null ) {
+          pendingRaf = requestAnimationFrame( function() {
+            pendingRaf = null;
+            if ( self2.element && self2.element.outlayerGUID ) {
+              self2.layout();
+            }
+          });
+        }
+      });
+      // Observe items added during the initial _create (via reloadItems).
+      // Items added later (via _itemize through appended/prepended/addItems)
+      // are observed by the proto._itemize override below.
+      for ( var i = 0; i < this.items.length; i++ ) {
+        this._observeItemElement( this.items[i].element );
+      }
+    }
+  };
+
+  // Helper used by both _create's initial loop and the _itemize override.
+  // Pre-populates _resizeLastSizes with getBoundingClientRect (which
+  // matches the borderBoxSize the observer delivers) before observing,
+  // so the first observer event has a real comparison baseline.
+  proto._observeItemElement = function( elem ) {
+    var rect = elem.getBoundingClientRect();
+    this._resizeLastSizes.set( elem, { width: rect.width, height: rect.height });
+    this._resizeObserver.observe( elem );
+  };
+
+  // Hook _itemize so items added after construction (via appended,
+  // prepended, addItems — all of which call _itemize) get observed by
+  // the per-instance ResizeObserver from above.
+  var baseItemize = proto._itemize;
+  proto._itemize = function( elems ) {
+    var items = baseItemize.call( this, elems );
+    if ( this._resizeObserver ) {
+      for ( var i = 0; i < items.length; i++ ) {
+        this._observeItemElement( items[i].element );
+      }
+    }
+    return items;
+  };
+
+  // Unobserve removed items so the ResizeObserver doesn't keep their
+  // elements alive after they're detached from the DOM.
+  var baseRemove = proto.remove;
+  proto.remove = function( elems ) {
+    if ( this._resizeObserver ) {
+      var removeItems = this.getItems( elems );
+      for ( var i = 0; i < removeItems.length; i++ ) {
+        this._resizeObserver.unobserve( removeItems[i].element );
+      }
+    }
+    return baseRemove.call( this, elems );
+  };
+
+  // Disconnect the ResizeObserver on destroy.
+  var baseDestroy = proto.destroy;
+  proto.destroy = function() {
+    if ( this._resizeObserver ) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+    return baseDestroy.call( this );
   };
 
   proto._resetLayout = function() {

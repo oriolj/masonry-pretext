@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: per-item ResizeObserver</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for the per-item ResizeObserver hook (#012,
+    closes desandro/masonry#1147 + 7 image-overlap duplicates). 4 items
+    at default 60×30. After construction, programmatically resize item 0
+    to height 60 — simulating an image lazy-loading and growing the item.
+
+    If the ResizeObserver hook is wired correctly, the relayout fires via
+    rAF coalescing and item 3 lands at (60, 30) — the post-resize layout
+    (col 0 ends at 60, cols 1/2 end at 30, item 3 picks col 1 leftmost).
+
+    If the hook is broken or missing, item 3 stays at (0, 30) — the pre-
+    resize layout (all cols end at 30, item 3 picks col 0 leftmost). The
+    position assertion catches it.
+
+    Same discriminating-test pattern as the pretext (#009) and fonts-ready
+    (#010) fixtures: pick a final position only achievable through the
+    new code path.
+  -->
+  <div id="resize-observer" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#resize-observer');
+    var items = grid.querySelectorAll('.item');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+    });
+
+    // Resize item 0 from 30px → 60px AFTER masonry has laid out. The
+    // ResizeObserver hook should detect the size change and schedule a
+    // relayout via rAF.
+    items[0].style.height = '60px';
+
+    // Wait several rAF ticks before signaling ready. ResizeObserver
+    // notifications are dispatched after the next layout pass, so:
+    //   tick 1 — browser computes the new size, ResizeObserver entries fire,
+    //            our callback skips item 0's "first" event (per the
+    //            observed-once WeakSet) — wait, no, item 0 was observed
+    //            during _create which was BEFORE the height change, so the
+    //            initial event already fired with height 30. The new event
+    //            here is the genuine change.
+    //   tick 2 — our handler schedules layout() via rAF
+    //   tick 3 — the scheduled layout() runs and writes new positions
+    //   then __READY signals the runner that positions are stable
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          window.__READY = true;
+        });
+      });
+    });
+  </script>
+
+</body>
+</html>

@@ -17,6 +17,69 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.12 — 2026-04-08 — Per-item ResizeObserver auto-relayout (§ P.1b)
+
+> Tag: `v5.0.0-dev.12` · Improvement: [`012-per-item-resize-observer.md`](./improvements/012-per-item-resize-observer.md) · **Closes upstream**: [`#1147`](https://github.com/desandro/masonry/issues/1147) + 7 duplicates ([`#1185`](https://github.com/desandro/masonry/issues/1185), [`#1158`](https://github.com/desandro/masonry/issues/1158), [`#1152`](https://github.com/desandro/masonry/issues/1152), [`#1108`](https://github.com/desandro/masonry/issues/1108), [`#1165`](https://github.com/desandro/masonry/issues/1165), [`#1189`](https://github.com/desandro/masonry/issues/1189), [`#1199`](https://github.com/desandro/masonry/issues/1199))
+
+### Headline
+
+**Closes 8+ duplicate upstream issues in one shot — the dominant complaint category in the upstream tracker.** When a masonry item contains a lazy-loading `<img>`, masonry measures it at its empty fallback size, packs the layout, then the image loads and the item grows — but masonry doesn't know to relayout. The traditional fix was a separate `imagesLoaded` library; the platform-native fix is `ResizeObserver`, which fires when ANY item resizes for ANY reason (image load, font load, content edit, parent resize, custom element render, etc).
+
+### Added
+
+- **Per-instance `ResizeObserver`** observing every item element. When any item's size changes, schedule a `layout()` via `requestAnimationFrame` coalescing so multiple changes in one frame collapse to a single relayout call.
+- **`_itemize` override** so items added after construction (via `appended()`, `prepended()`, `addItems()`) are auto-observed.
+- **`remove` override** so removed items are auto-unobserved (prevents a memory leak class).
+- **`destroy` override** disconnects the observer entirely.
+- **`_observeItemElement` helper** that pre-populates `_resizeLastSizes` synchronously at observe time using `getBoundingClientRect()`. Critical for correctness — see "Calibration lesson" below.
+- **`test/visual/pages/resize-observer.html`** discriminating fixture: programmatically resizes item 0 from 30→60 after construction; asserts the relayout fires (item 3 lands at `(60, 30)`, not `(0, 30)`).
+- **7th visual fixture in `make test`** (was 6).
+
+### Numbers
+
+| File | Metric | pre-012 | v5.0.0-dev.12 | Δ |
+|---|---|---:|---:|---:|
+| `dist/masonry.pkgd.js` | raw | 49,493 | 52,126 | +2,633 B (+5.32 %) |
+| `dist/masonry.pkgd.js` | gzip | 9,337 | 9,844 | +507 B (+5.43 %) |
+| `dist/masonry.pkgd.min.js` | raw | 21,736 | **22,984** | **+1,248 B (+5.74 %)** |
+| `dist/masonry.pkgd.min.js` | gzip | 6,957 | **7,322** | **+365 B (+5.25 %)** |
+| `dist/masonry.pkgd.min.js` | brotli | 6,267 | 6,586 | +319 B (+5.09 %) |
+| Visual regression tests | passing | 6 / 6 | **7 / 7** | +1 |
+| SSR + no-jquery gates | passing | ✓ + ✓ | ✓ + ✓ | unchanged |
+
+### vs upstream-frozen v4.2.2
+
+| Metric | v4.2.2 | v5.0.0-dev.12 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,103 | **22,984** | **−1,119 B (−4.64 %)** |
+| `dist/masonry.pkgd.min.js` gzip | 7,367 | 7,322 | −45 B (−0.61 %) |
+| `dist/masonry.pkgd.min.js` brotli | 6,601 | 6,586 | −15 B (−0.23 %) |
+
+The fork is **still smaller than upstream in every minified-bundle metric**, even after adding three new features (#009 pretext, #010 fonts.ready, #012 ResizeObserver). The size lead has shrunk from −9.82 % gz at #010 to −0.61 % gz now — but each feature closes real upstream issues that have been open for years. The remaining size wins from the post-#010 review (items A-F + M-O, ~950-1500 B gz combined) will more than restore the gap when they land.
+
+### Calibration lesson — the first attempt was wrong
+
+**First attempt** used a `WeakSet` to "skip the first observer event per element," based on the assumption that ResizeObserver's first delivery is always the no-op "I'm now observing this" notification. **The bug:** ResizeObserver delivers the first event with the size at *delivery* time, not at *observe* time. If the size changes between `observe()` and the first delivery (which is exactly what the test fixture does — and exactly what real lazy-loaded images do), the first delivered event captures the **new** size. Skipping it silently misses the very kind of change this hook exists to catch.
+
+The discriminating fixture caught it immediately on the first run: item 3 stayed at `(0, 30)` because the resize event for item 0 was treated as a "first event" and skipped. **Build the fixture first, debug against it second.**
+
+**The fix:** pre-populate a `_resizeLastSizes` `WeakMap` synchronously at `observe()` time using `getBoundingClientRect()` (which returns the same fractional `borderBoxSize` the observer delivers — they match exactly in chromium ≥84). Drop the WeakSet entirely. Now every event is a real comparison.
+
+### Predicted vs actual
+
+- `min.js` raw: predicted +700-1200, actual **+1,248** (~48 B over the top of band — within rounding)
+- `min.js` gz: predicted +250-400, actual **+365** (middle of band)
+- All 7 visual fixtures + SSR + no-jquery gates: ✅
+- Discriminating fixture proves the relayout fires: ✅
+
+### Migration notes
+
+- **None for existing users.** The hook is opt-in via the platform: any item that resizes for any reason now triggers an automatic relayout. No API change.
+- **You no longer need `imagesLoaded`** for the lazy-image case. Remove it from your dependencies if it was only there for masonry. (You may still want it for other use cases like `imagesLoaded.on('progress')`.)
+- **CDN consumers**: regenerate SRI hashes (bundle bytes have changed).
+
+---
+
 ## v5.0.0-dev.11 — 2026-04-08 — Tier 0 foundation: README + packaging + CI + portable harness
 
 > Tag: `v5.0.0-dev.11` · Improvement: [`011-tier0-foundation.md`](./improvements/011-tier0-foundation.md) · Closes upstream: _none directly_

@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.11
+ * Masonry PACKAGED v5.0.0-dev.12
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1238,13 +1238,76 @@ var Masonry = (() => {
         proto._create = function() {
           baseCreate.call(this);
           if (typeof document !== "undefined" && document.fonts && document.fonts.status !== "loaded") {
-            var self = this;
+            var self1 = this;
             document.fonts.ready.then(function() {
-              if (self.element && self.element.outlayerGUID) {
-                self.layout();
+              if (self1.element && self1.element.outlayerGUID) {
+                self1.layout();
               }
             });
           }
+          if (typeof ResizeObserver !== "undefined") {
+            var self2 = this;
+            this._resizeLastSizes = /* @__PURE__ */ new WeakMap();
+            var pendingRaf = null;
+            this._resizeObserver = new ResizeObserver(function(entries) {
+              var changed = false;
+              for (var i2 = 0; i2 < entries.length; i2++) {
+                var entry = entries[i2];
+                var box = entry.borderBoxSize && entry.borderBoxSize[0];
+                var w = box ? box.inlineSize : entry.contentRect.width;
+                var h = box ? box.blockSize : entry.contentRect.height;
+                var prev = self2._resizeLastSizes.get(entry.target);
+                if (prev && (prev.width !== w || prev.height !== h)) {
+                  changed = true;
+                }
+                self2._resizeLastSizes.set(entry.target, { width: w, height: h });
+              }
+              if (changed && pendingRaf === null) {
+                pendingRaf = requestAnimationFrame(function() {
+                  pendingRaf = null;
+                  if (self2.element && self2.element.outlayerGUID) {
+                    self2.layout();
+                  }
+                });
+              }
+            });
+            for (var i = 0; i < this.items.length; i++) {
+              this._observeItemElement(this.items[i].element);
+            }
+          }
+        };
+        proto._observeItemElement = function(elem) {
+          var rect = elem.getBoundingClientRect();
+          this._resizeLastSizes.set(elem, { width: rect.width, height: rect.height });
+          this._resizeObserver.observe(elem);
+        };
+        var baseItemize = proto._itemize;
+        proto._itemize = function(elems) {
+          var items = baseItemize.call(this, elems);
+          if (this._resizeObserver) {
+            for (var i = 0; i < items.length; i++) {
+              this._observeItemElement(items[i].element);
+            }
+          }
+          return items;
+        };
+        var baseRemove = proto.remove;
+        proto.remove = function(elems) {
+          if (this._resizeObserver) {
+            var removeItems = this.getItems(elems);
+            for (var i = 0; i < removeItems.length; i++) {
+              this._resizeObserver.unobserve(removeItems[i].element);
+            }
+          }
+          return baseRemove.call(this, elems);
+        };
+        var baseDestroy = proto.destroy;
+        proto.destroy = function() {
+          if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
+          }
+          return baseDestroy.call(this);
         };
         proto._resetLayout = function() {
           this.getSize();

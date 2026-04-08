@@ -1174,7 +1174,7 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | ↳ alt to B | **CSS Variable staggering** — apply `--index` per item, use `transition-delay: calc(var(--index) * 50ms)` in CSS | § Post-#010 (review #5) | 🟡 alternative | | **Alternative path for item B**: if we KEEP stagger as a feature instead of deleting it, this is a cleaner JS-free implementation (~140 B savings + designer-controllable timing). Decision deferred until item B is sequenced. |
 | **— High UX wins (post-#010 review) — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — — —** |
 | **G** | **Math fix for percentage-width + gutter** | § P.1 (math) | ⬜ | | **closes desandro/masonry#1006 (53 reactions, top open issue)** |
-| **H** | Per-item ResizeObserver for image-overlap | § P.1b | ⬜ | | **closes desandro/masonry#1147 + 7 duplicates** (dominant complaint category) |
+| **H** | Per-item ResizeObserver for image-overlap | § P.1b | ✅ `v5.0.0-dev.12` | [012-per-item-resize-observer.md](./improvements/012-per-item-resize-observer.md) | **closes desandro/masonry#1147 + 7 duplicates**; +365 B gz cost; new resize-observer discriminating fixture; first attempt's "skip first event" logic was a bug — see calibration lesson |
 | K | MutationObserver auto-relayout (opt-in) | § P.2 | ⬜ | | removes the "forgot to call reload" footgun |
 | I | Column-pick strategy callback (don't always pick shortest) | § 811 | ⬜ | | closes `#811` (10 reactions) |
 | J | Respect parent max-width with `fitWidth` | § 1129 | ⬜ | | closes `#1129` (3 reactions) |

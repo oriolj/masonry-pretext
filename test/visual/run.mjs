@@ -110,6 +110,22 @@ const cases = [
       { left: '60px',  top: '30px' }, // discriminating: fonts.ready relayout fired
     ],
   },
+  {
+    // Per-item ResizeObserver (#012) — see test/visual/pages/resize-observer.html
+    // for the discriminator design. The fixture programmatically resizes item 0
+    // from 30→60 AFTER masonry has laid out. If the per-item ResizeObserver
+    // schedules a relayout via rAF, item 3 lands at (60, 30); if not, it
+    // stays at (0, 30).
+    name: 'resize-observer',
+    page: 'resize-observer.html',
+    container: '#resize-observer',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '60px',  top: '30px' }, // discriminating: ResizeObserver relayout fired
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
