@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.24
+ * Masonry PACKAGED v5.0.0-dev.25
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1290,11 +1290,12 @@ var Masonry = (() => {
           return colGroup;
         }
         function getColGroupY(col, colSpan, colYs) {
-          if (colSpan < 2) {
-            return colYs[col];
+          var max = colYs[col];
+          var end = col + colSpan;
+          for (var i = col + 1; i < end; i++) {
+            if (colYs[i] > max) max = colYs[i];
           }
-          var groupColYs = colYs.slice(col, col + colSpan);
-          return Math.max.apply(Math, groupColYs);
+          return max;
         }
         function getHorizontalColPosition(colSpan, size, state) {
           var col = state.horizontalColIndex % state.cols;

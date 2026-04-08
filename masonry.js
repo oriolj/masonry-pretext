@@ -234,13 +234,17 @@
   }
 
   function getColGroupY( col, colSpan, colYs ) {
-    if ( colSpan < 2 ) {
-      return colYs[ col ];
+    // Direct max-loop instead of slice() + Math.max.apply (#025 / item M).
+    // For a 1000-item multi-col grid this saves 1000 array allocations
+    // per layout (one slice() per call) plus the Math.max.apply
+    // arguments-array allocation. Handles colSpan=1 correctly because
+    // the loop body never executes.
+    var max = colYs[ col ];
+    var end = col + colSpan;
+    for ( var i = col + 1; i < end; i++ ) {
+      if ( colYs[i] > max ) max = colYs[i];
     }
-    // make an array of colY values for that one group
-    var groupColYs = colYs.slice( col, col + colSpan );
-    // and get the max value of the array
-    return Math.max.apply( Math, groupColYs );
+    return max;
   }
 
   // get column position based on horizontal index. #873
