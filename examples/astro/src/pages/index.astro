@@ -1,0 +1,81 @@
+---
+// src/pages/index.astro — Astro server page.
+//
+// The frontmatter (between the --- fences) runs in Node at build/request
+// time. Use it to fetch data, shape props, etc. No DOM access here.
+//
+// You can also `import Masonry from 'masonry-pretext'` in this frontmatter
+// without crashing (as of improvement #005), but you do not *need* to —
+// construction has to happen in the browser anyway. Keep the import in the
+// client <script> below.
+
+type Item = { id: string; title: string; height: number };
+
+const items: Item[] = Array.from({ length: 24 }, (_, i) => ({
+  id: String(i),
+  title: `Item ${i + 1}`,
+  height: 80 + ((i * 37) % 220),
+}));
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>masonry-pretext + Astro</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 24px; }
+      .grid { position: relative; }
+      .grid-item {
+        width: 240px;
+        background: #f3f4f6;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>masonry-pretext + Astro</h1>
+    <p>
+      Grid markup is server-rendered by Astro. Masonry is constructed by a
+      client-side <code>&lt;script&gt;</code> block after hydration.
+    </p>
+
+    <div class="grid" id="masonry-grid">
+      {items.map((item) => (
+        <div class="grid-item" style={`height: ${item.height}px`}>
+          {item.title}
+        </div>
+      ))}
+    </div>
+
+    <!--
+      Astro bundles <script> blocks with its build pipeline (esbuild +
+      Vite). This runs exclusively in the browser. masonry-pretext's ESM
+      entry (dist/masonry.mjs, shipped since #013) imports cleanly here.
+    -->
+    <script>
+      import Masonry from 'masonry-pretext';
+
+      const grid = document.querySelector('#masonry-grid');
+      if (grid) {
+        // Stored on window only so HMR reloads can dispose the old
+        // instance. Not needed for production.
+        const anyWin = window as unknown as { __msnry?: { destroy(): void } };
+        anyWin.__msnry?.destroy();
+
+        anyWin.__msnry = new Masonry(grid, {
+          itemSelector: '.grid-item',
+          columnWidth: 240,
+          gutter: 16,
+          // SSR-mode tuning: no animated settle on hydration or any
+          // subsequent relayout. Default is '0.4s' — change it for any
+          // server-rendered grid. See main README § "Optimizations for
+          // SSR mode".
+          transitionDuration: 0,
+        });
+      }
+    </script>
+  </body>
+</html>

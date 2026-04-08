@@ -151,6 +151,152 @@ new Masonry('.grid', {
 
 Measured speedup vs DOM measurement: **~1.2-1.3× faster initial layout (17-24% reduction)** across grids of 100-2000 items. The callback's lookup must be **O(1)** (a `WeakMap` keyed on element, or a cached `prepare()` result) — an O(N) per-call lookup will erase the savings. See [`improvements/009-pretext-integration.md`](./improvements/009-pretext-integration.md) for the full record + the calibration lesson that surfaced this.
 
+## Server-side rendering (SSR) and hydration
+
+`masonry-pretext` is **safe to import from server code** — Next.js (App Router and Pages Router), Nuxt, SvelteKit, Astro, Remix, Vite SSR, any build that evaluates the module graph in Node. `import Masonry from 'masonry-pretext'` (and `require('masonry-pretext')`) no longer crashes with `ReferenceError: window is not defined` or `document is not defined`.
+
+This closes long-standing upstream issues [`desandro/masonry#1194`](https://github.com/desandro/masonry/issues/1194), [`#1121`](https://github.com/desandro/masonry/issues/1121), and [`#1201`](https://github.com/desandro/masonry/issues/1201). How it works: every UMD call site inside the bundle (`masonry`, `outlayer`, `outlayer/item`, `get-size`, `fizzy-ui-utils`, `jquery-bridget`, plus `fizzy-ui-utils.docReady`) is wrapped in a `typeof window !== 'undefined'` / `typeof document !== 'undefined'` guard. In a browser the guards evaluate to the real globals; in Node they short-circuit to empty objects, and the `typeof ResizeObserver` / `document.fonts` checks in `_create` no-op. The bundle loads cleanly in a DOM-less `vm` context — verified on every build by `test/visual/ssr-smoke.mjs`, which runs as part of `npm test`. See [`improvements/005-ssr-import-fix.md`](./improvements/005-ssr-import-fix.md) for the full record.
+
+### What SSR-safe means (and what it does not)
+
+- ✅ **Import is safe.** You can put `import Masonry from 'masonry-pretext'` in the top of a server component, layout, or route file — it will not crash the server render, even if you never construct an instance there.
+- ✅ **Constructing inside a `typeof window !== 'undefined'` guard is safe.** All the DOM-touching work in `_create` is gated behind `typeof` checks.
+- ❌ **The library does not lay out on the server.** Masonry needs real DOM elements with real measured sizes. The server renders the grid markup in flow layout; a tiny client-side effect constructs `new Masonry(...)` after hydration, at which point the items get absolutely positioned.
+- ❌ **Do not construct a Masonry instance at module scope in a server file.** That would run in Node and hit DOM APIs. Always defer construction to a `useEffect` / `onMount` / `client:load` boundary.
+
+### Recommended pattern
+
+```jsx
+// React (Next.js, Remix, etc.)
+'use client';
+import { useEffect, useRef } from 'react';
+import Masonry from 'masonry-pretext';
+
+export default function Grid({ items }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const msnry = new Masonry(ref.current, {
+      itemSelector: '.grid-item',
+      columnWidth: 200,
+      gutter: 10,
+      transitionDuration: 0, // see "Optimizations for SSR mode" below
+    });
+    return () => msnry.destroy();
+  }, [items]);
+
+  return (
+    <div ref={ref} className="grid">
+      {items.map((item) => (
+        <div key={item.id} className="grid-item">{item.content}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+The grid markup is **server-rendered in flow layout** (no `position: absolute` on items, no computed heights). On hydration Masonry constructs, measures, and reflows into a cascading grid. Users see one layout pass from flow → absolute.
+
+Full runnable examples:
+
+- **Next.js (App Router + `'use client'`):** [`examples/nextjs/`](./examples/nextjs)
+- **Astro (server component + `client:load` island):** [`examples/astro/`](./examples/astro)
+
+### Hydration flash and how to reduce it
+
+Before the client JS boots, the user sees the grid rendered by the server — in normal flow layout, because Masonry has not run yet. When hydration completes and `new Masonry(...)` runs, the items suddenly reflow into the absolute-positioned cascade. On a fast page this is invisible; on a slow page it is a visible layout shift (CLS).
+
+Two practical mitigations today:
+
+1. **Reserve vertical space with CSS.** Give the grid container a `min-height` (or the items a fixed `aspect-ratio`). Flow layout will match the final height closely enough that the reflow is not a vertical jump, only a horizontal rearrangement.
+2. **Disable the enter animation.** Pass `transitionDuration: 0` so the flow → absolute transition is instantaneous, not a 0.4s animated settle. This is the single highest-impact option for SSR content — see below.
+
+### Optimizations for SSR mode
+
+Masonry's default options assume a client-rendered SPA where items fade in, stagger in, animate on resize, and may grow as lazy images load. When your content is **server-rendered and static after first paint**, most of that machinery is wasted work. Recommended option set for SSR/static content:
+
+```js
+new Masonry(ref.current, {
+  columnWidth: 200,
+  gutter: 10,
+  // --- SSR/static tuning below ---
+  transitionDuration: 0, // no animated settle on any relayout — biggest win
+  stagger: 0,            // no sequential delays (default is already 0, but explicit)
+  initLayout: true,      // default; set false only if you pre-positioned items server-side
+});
+```
+
+What each one buys you:
+
+| Option | Default | SSR recommendation | Why |
+|---|---|---|---|
+| `transitionDuration` | `'0.4s'` | `0` | Relayouts on resize / font load / image load are instant instead of a 0.4s animated reposition. Eliminates the visible "settle" on hydration. Saves transition-property CSS writes on every layout pass. |
+| `stagger` | `0` | `0` | Already 0; call out so readers know not to set it in SSR contexts. |
+| `resize` | `true` | `true` (keep) | Window-resize relayouts are still valuable on the client. Cheap to leave on. |
+| `initLayout` | `true` | `true` (or `false` if you pre-positioned items server-side) | Set `false` only when you have already written `position:absolute;left:…;top:…` into each item's inline style on the server, and you want Masonry to *only* handle subsequent resizes. |
+
+**Turning animations off is the one change you almost always want for SSR.** The default `0.4s` transition was designed for clients that fade items in; for a server-rendered grid, it is a visible reflow jank on hydration and adds zero UX value.
+
+**Other things that are already safe / already good in SSR mode:**
+
+- **First layout is already instant.** Outlayer skips transitions on the very first `layout()` call via `_isLayoutInited`. The first layout after hydration is *always* transition-free; you only need `transitionDuration: 0` for *subsequent* layouts (resize, image load, etc.).
+- **Pretext (`pretextify`) works in SSR and non-SSR equally.** It is not specific to SSR but pairs naturally with it: if you have measured heights from a cached font-metrics pass, you can skip the per-item reflow on hydration entirely.
+- **`document.fonts.ready` gate is a no-op when fonts are already loaded.** If your page's fonts are preloaded or inlined, the #010 deferred layout never fires.
+- **Per-item `ResizeObserver` is SSR-safe.** It is only constructed if `typeof ResizeObserver !== 'undefined'`, which is false in Node. On the client it keeps working normally.
+
+### Using pretext alongside SSR
+
+**Short answer: you do not need to do anything different.** The `pretextify` callback runs inside `layout()`, which only runs on the client (inside your `useEffect` / `onMount` / `<script>`). The callback body never executes during server render, so it is free to assume a DOM environment.
+
+The only caveat is on the **pretext library's own import**, not on masonry's. If `@chenglou/pretext` (or whatever measurement library you are plugging in) touches `document`, `window`, or `OffscreenCanvas` at import time, then `import { prepare, layout } from '@chenglou/pretext'` at the top of a server component file could crash — that would be a pretext-side SSR bug, not a masonry one. Two mitigations:
+
+1. **Import pretext inside the client effect** rather than at module top. In a React `'use client'` component this is trivial — the whole file is client-only, so a top-level import is fine. In mixed server/client files, move the import inside the `useEffect` body (or use `await import(...)` lazily).
+2. **Keep the `pretextify` callback closure-local to the client code.** Build your size cache (`WeakMap`, etc.) inside the effect, not in module scope, so it is never instantiated during server render.
+
+Example inside a Next.js `'use client'` component:
+
+```tsx
+'use client';
+import { useEffect, useRef } from 'react';
+import Masonry from 'masonry-pretext';
+import { prepare, layout } from '@chenglou/pretext';
+
+const FONT = '16px/1.5 Inter, sans-serif';
+const COL_WIDTH = 240;
+const LINE_HEIGHT = 24;
+
+export default function Grid({ items }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const cache = new WeakMap();
+    const msnry = new Masonry(ref.current, {
+      columnWidth: COL_WIDTH,
+      transitionDuration: 0,
+      pretextify(elem) {
+        let prepared = cache.get(elem);
+        if (!prepared) {
+          prepared = prepare(elem.textContent, FONT);
+          cache.set(elem, prepared);
+        }
+        const { height } = layout(prepared, COL_WIDTH, LINE_HEIGHT);
+        return { outerWidth: COL_WIDTH, outerHeight: height };
+      },
+    });
+    return () => msnry.destroy();
+  }, [items]);
+  return <div ref={ref} className="grid">{/* ... */}</div>;
+}
+```
+
+That is it. The masonry side of SSR + pretext has no special setup.
+
+**Candidate future optimizations** (not yet landed — tracked as ideas, open an issue if you want one prioritized):
+
+- A `static: true` preset that bundles `transitionDuration: 0` + skips the `document.fonts.ready` gate + skips the ResizeObserver construction entirely, for grids that are guaranteed to never change post-hydration.
+- A `Masonry.computeLayout(sizes, options)` static helper (pure packing math, no DOM) so the server can pre-compute `(x, y)` positions and emit them inline as CSS. With `initLayout: false`, this gives a zero-flash SSR path. Depends on roadmap item P (engine/adapter split).
+- Deferring ResizeObserver attachment to `requestIdleCallback` to keep it off the hydration critical path.
+
 ## License
 
 Masonry is released under the [MIT license](http://desandro.mit-license.org). Have at it.
