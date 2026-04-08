@@ -45,3 +45,4 @@ timestamp	label	commit	pkg_name	pkg_version	files	loc	deps	dev_deps	src_raw	src_
 2026-04-08T18:12:59Z	post-023-inline-helpers	d191014	masonry-pretext	5.0.0-dev.23	109	20287	2	4	29127	9152	7891	58479	11034	9827	25415	8214	7463
 2026-04-08T18:24:43Z	post-024-delete-stagger	fa8d4b8	masonry-pretext	5.0.0-dev.24	110	20365	2	4	29127	9152	7891	57216	10761	9585	24855	8026	7281
 2026-04-08T18:26:11Z	post-025-allocation-free-getColGroupY	24df2ae	masonry-pretext	5.0.0-dev.25	111	20427	2	4	29357	9257	7993	57230	10771	9579	24846	8031	7288
+2026-04-08T18:29:17Z	post-026-weakmap-registry	a9d9ca3	masonry-pretext	5.0.0-dev.26	112	20515	2	4	29305	9241	7985	57043	10716	9551	24731	8001	7261

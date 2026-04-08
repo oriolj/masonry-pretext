@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.25
+ * Masonry PACKAGED v5.0.0-dev.26
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -723,8 +723,7 @@ var Masonry = (() => {
         var console2 = window2.console;
         var noop = function() {
         };
-        var GUID = 0;
-        var instances = {};
+        var instances = /* @__PURE__ */ new WeakMap();
         function Outlayer(element, options) {
           var queryElement = utils.getQueryElement(element);
           if (!queryElement) {
@@ -736,9 +735,7 @@ var Masonry = (() => {
           this.element = queryElement;
           this.options = utils.extend({}, this.constructor.defaults);
           this.option(options);
-          var id = ++GUID;
-          this.element.outlayerGUID = id;
-          instances[id] = this;
+          instances.set(this.element, this);
           this._create();
           var isInitLayout = this._getOption("initLayout");
           if (isInitLayout) {
@@ -1121,14 +1118,12 @@ var Masonry = (() => {
             item.destroy();
           });
           this.unbindResize();
-          var id = this.element.outlayerGUID;
-          delete instances[id];
-          delete this.element.outlayerGUID;
+          instances.delete(this.element);
+          this._destroyed = true;
         };
         Outlayer.data = function(elem) {
           elem = utils.getQueryElement(elem);
-          var id = elem && elem.outlayerGUID;
-          return id && instances[id];
+          return elem && instances.get(elem);
         };
         Outlayer.create = function(namespace, options) {
           var Layout = subclass(Outlayer);
@@ -1351,7 +1346,7 @@ var Masonry = (() => {
           if (!this.options.static && typeof document !== "undefined" && document.fonts && document.fonts.status !== "loaded") {
             var self1 = this;
             document.fonts.ready.then(function() {
-              if (self1.element && self1.element.outlayerGUID) {
+              if (!self1._destroyed) {
                 self1.layout();
               }
             });
@@ -1376,7 +1371,7 @@ var Masonry = (() => {
               if (changed && pendingRaf === null) {
                 pendingRaf = requestAnimationFrame(function() {
                   pendingRaf = null;
-                  if (self2.element && self2.element.outlayerGUID) {
+                  if (!self2._destroyed) {
                     self2.layout();
                   }
                 });

@@ -346,7 +346,7 @@
          document.fonts.status !== 'loaded' ) {
       var self1 = this;
       document.fonts.ready.then( function() {
-        if ( self1.element && self1.element.outlayerGUID ) {
+        if ( !self1._destroyed ) {
           self1.layout();
         }
       });
@@ -384,7 +384,7 @@
         if ( changed && pendingRaf === null ) {
           pendingRaf = requestAnimationFrame( function() {
             pendingRaf = null;
-            if ( self2.element && self2.element.outlayerGUID ) {
+            if ( !self2._destroyed ) {
               self2.layout();
             }
           });

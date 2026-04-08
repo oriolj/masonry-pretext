@@ -475,6 +475,57 @@ proto.updateStagger = function() {
   });
 };`,
       },
+      // ── #026 — WeakMap-keyed instance registry (item N) ─────────────────
+      // Replace `var GUID + var instances = {} + element.outlayerGUID expando`
+      // with a single module-level `WeakMap<Element, Outlayer>`. Eliminates:
+      //   - the GUID counter + integer ID allocations
+      //   - the `outlayerGUID` expando (potential leak if destroy not called)
+      //   - the global `instances{}` object that leaks instance refs
+      // The WeakMap automatically GCs entries when the container element is
+      // collected, even without explicit destroy(). The alive-check pattern
+      // (`self.element && self.element.outlayerGUID`) used in masonry.js for
+      // post-#010 / #012 deferred callbacks shifts to a `_destroyed` boolean
+      // set in destroy().
+      {
+        description: '[#026] outlayer.js — replace var GUID + instances{} with WeakMap',
+        find: `// globally unique identifiers
+var GUID = 0;
+// internal store of all Outlayer intances
+var instances = {};`,
+        replace: `// internal store of all Outlayer instances, keyed by container element
+var instances = new WeakMap();`,
+      },
+      {
+        description: '[#026] outlayer.js — drop GUID expando from constructor',
+        find: `  // add id for Outlayer.getFromElement
+  var id = ++GUID;
+  this.element.outlayerGUID = id; // expando
+  instances[ id ] = this; // associate via id`,
+        replace: `  // associate this instance with its container element via WeakMap (#026 / item N)
+  instances.set( this.element, this );`,
+      },
+      {
+        description: '[#026] outlayer.js — drop GUID delete + add _destroyed flag in destroy',
+        find: `  var id = this.element.outlayerGUID;
+  delete instances[ id ]; // remove reference to instance by id
+  delete this.element.outlayerGUID;
+};`,
+        replace: `  instances.delete( this.element );
+  this._destroyed = true;
+};`,
+      },
+      {
+        description: '[#026] outlayer.js — Outlayer.data via WeakMap',
+        find: `Outlayer.data = function( elem ) {
+  elem = utils.getQueryElement( elem );
+  var id = elem && elem.outlayerGUID;
+  return id && instances[ id ];
+};`,
+        replace: `Outlayer.data = function( elem ) {
+  elem = utils.getQueryElement( elem );
+  return elem && instances.get( elem );
+};`,
+      },
       {
         description: '[#024] outlayer.js — delete msUnits + getMilliseconds (only used by updateStagger)',
         find: `// ----- helpers ----- //
