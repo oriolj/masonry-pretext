@@ -95,6 +95,21 @@ const cases = [
       { left: '60px',  top: '30px' }, // discriminating: pretext → col 1, DOM → col 0
     ],
   },
+  {
+    // document.fonts.ready hook (#010) — see test/visual/pages/fonts-ready.html
+    // for the discriminator design. The fixture mocks fonts.ready and item 0
+    // grows from 30→60 when fonts "load". If the deferred layout fires, item 3
+    // lands at (60, 30); if not, it lands at (0, 30).
+    name: 'fonts-ready',
+    page: 'fonts-ready.html',
+    container: '#fonts-ready',
+    expected: [
+      { left: '0px',   top: '0px'  },
+      { left: '60px',  top: '0px'  },
+      { left: '120px', top: '0px'  },
+      { left: '60px',  top: '30px' }, // discriminating: fonts.ready relayout fired
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

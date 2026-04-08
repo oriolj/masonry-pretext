@@ -834,7 +834,7 @@ Status legend: ⬜ pending · 🟡 in progress · ✅ landed · ⚠️ partial �
 | 5c | ResizeObserver: drop getSize() in needsResizeLayout | § P.1c | ⬜ | | |
 | 6 | Batch read/write layout pass | § 1.2 | ⬜ | | biggest perf win without API change |
 | 7 | Pretext integration (opt-in callback) | § 1.1 | ✅ `v5.0.0-dev.9` | [009-pretext-integration.md](./improvements/009-pretext-integration.md) | **headline feature**; +22 B gz cost; **measured 1.2-1.3× faster layout (17-24% reduction)** across 100-2000 item grids via new bench-pretext.mjs |
-| 8a | `document.fonts.ready` first-paint gate | § P.4 | ⬜ | | closes desandro/masonry#1182 |
+| 8a | `document.fonts.ready` first-paint gate | § P.4 | ✅ `v5.0.0-dev.10` | [010-document-fonts-ready.md](./improvements/010-document-fonts-ready.md) | **closes desandro/masonry#1182**; +63 B gz cost; new fonts-ready discriminating fixture |
 | 8b | MutationObserver auto-layout (opt-in) | § P.2 | ⬜ | | kills the "forgot to call reload" footgun |
 | 9 | Position via `transform: translate3d` | § 1.3 | ⬜ | | compositor-only, no layout invalidation |
 | 10a | WAAPI replaces transition state machine | § P.5 | ⬜ | | deletes ~120 LOC of Outlayer/Item |

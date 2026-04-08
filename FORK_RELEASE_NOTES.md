@@ -17,6 +17,56 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.10 — 2026-04-08 — `document.fonts.ready` first-paint gate (§ P.4)
+
+> Tag: `v5.0.0-dev.10` · Improvement: [`010-document-fonts-ready.md`](./improvements/010-document-fonts-ready.md) · **Closes upstream**: [`desandro/masonry#1182`](https://github.com/desandro/masonry/issues/1182)
+
+### Headline
+
+When a custom web font hasn't finished loading at masonry construction time, items get measured at the fallback font's rendered height and the resulting layout overlaps until something triggers a relayout. This has been upstream issue `#1182` since 2022 with no fix.
+
+The web platform has a clean primitive for this: `document.fonts.ready` is a Promise that resolves when all currently-pending font loads finish. Wired into masonry's `_create` so the layout automatically reruns when fonts are ready.
+
+### Added
+
+- **`_create` override in `masonry.js`** that schedules a deferred `layout()` via `document.fonts.ready.then(...)`. Guarded by `typeof document` (SSR-safe), `document.fonts.status !== 'loaded'` (no-op when fonts are already loaded), and `self.element && self.element.outlayerGUID` (no-op if the instance was destroyed before fonts loaded).
+- **`test/visual/pages/fonts-ready.html`** — discriminating fixture that mocks `document.fonts.status` and `document.fonts.ready` BEFORE loading the bundle. CSS grows item 0 from 30→60px when `[data-fonts-loaded]` is set. After resolving the mock promise, the position assertion verifies item 3 lands at `(60, 30)` (post-font-load) rather than `(0, 30)` (pre-font-load).
+- **6th visual regression fixture in `make test`.** Was 5/5 visual + ssr + no-jquery, now 6/6 + ssr + no-jquery.
+
+### Numbers
+
+| File | Metric | pre-010 | v5.0.0-dev.10 | Δ |
+|---|---|---:|---:|---:|
+| `masonry.js` source | raw | 7,997 | 8,860 | +863 B (mostly the doc comment, stripped by minifier) |
+| `dist/masonry.pkgd.min.js` | raw | 21,517 | **21,736** | **+219 B (+1.02 %)** |
+| `dist/masonry.pkgd.min.js` | gzip | 6,894 | **6,957** | **+63 B (+0.91 %)** |
+| `dist/masonry.pkgd.min.js` | brotli | 6,224 | **6,267** | **+43 B (+0.69 %)** |
+| Visual regression tests | passing | 5 / 5 | **6 / 6** | +1 (fonts-ready fixture) |
+| SSR + no-jquery gates | passing | ✓ + ✓ | ✓ + ✓ | unchanged |
+
+### vs upstream-frozen v4.2.2
+
+| Metric | v4.2.2 | v5.0.0-dev.10 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,103 | **21,736** | **−2,367 B (−9.82 %)** |
+| `dist/masonry.pkgd.min.js` gzip | 7,367 | **6,957** | **−410 B (−5.57 %)** |
+| `dist/masonry.pkgd.min.js` brotli | 6,601 | **6,267** | **−334 B (−5.06 %)** |
+
+The fork is **still over 9 % smaller raw / 5.5 % smaller gzipped** vs upstream after both feature additions (#009 pretext + #010 fonts-ready).
+
+### Predicted vs actual
+
+- min.js raw: +60-120 B predicted, **+219 B actual** (~100 B over the band). Calibration: method overrides with closure-captured base + conditional + async callback cost ~150-250 minified bytes, not ~80. Updating future predictions.
+- min.js gz: +25-60 B predicted, **+63 B actual** (3 B over the top of the band).
+- All gates green; new discriminating fixture verifies the hook fires correctly.
+
+### Migration notes
+
+- **None for existing users.** The hook is opt-in via the platform: if `document.fonts.status === 'loaded'` at construction, the guard short-circuits and behavior is identical to before. If fonts are pending, you get an automatic relayout when they load — no API change required.
+- **CDN consumers**: regenerate SRI hashes (bundle bytes have changed).
+
+---
+
 ## v5.0.0-dev.9 — 2026-04-08 — Pretext integration: `pretextify` callback (§ 1.1) — **HEADLINE FEATURE**
 
 > Tag: `v5.0.0-dev.9` · Improvement: [`009-pretext-integration.md`](./improvements/009-pretext-integration.md)

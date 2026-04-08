@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: document.fonts.ready hook</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for the document.fonts.ready hook (#010). Mocks
+    `document.fonts.status` and `document.fonts.ready` BEFORE loading the
+    bundle so masonry's _create override sees the font load as pending and
+    schedules a deferred layout. The test asserts:
+
+      - layout() runs once at construction (with the wrong/initial heights)
+      - layout() runs a SECOND time after fonts.ready resolves
+      - the second layout produces the correct positions
+
+    Implementation: items have a CSS class that changes height based on a
+    `[data-fonts-loaded]` attribute on <html>. The mock sets the attribute
+    when the fake fonts.ready promise resolves, simulating "fonts loaded ⇒
+    items grew". If the deferred layout doesn't fire, item 0 stays at 30px
+    height and item 3 lands at (0, 30). With the deferred layout, item 0
+    has grown to 60px and item 3 lands at (60, 30) — same discriminator
+    pattern as the pretext fixture.
+  -->
+
+  <style>
+    /* Item 0 grows from 30px to 60px when [data-fonts-loaded] is on <html>.
+       This simulates a custom font loading and changing its rendered height. */
+    #fonts-ready .item.font-sensitive { height: 30px; }
+    [data-fonts-loaded] #fonts-ready .item.font-sensitive { height: 60px; }
+  </style>
+
+  <div id="fonts-ready" class="container">
+    <div class="item font-sensitive"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <!-- Mock document.fonts BEFORE loading the bundle. Masonry's _create
+       override checks `document.fonts.status !== 'loaded'` and awaits
+       `document.fonts.ready`. -->
+  <script>
+    (function () {
+      var fontsReadyResolve;
+      var pendingPromise = new Promise(function (resolve) {
+        fontsReadyResolve = resolve;
+      });
+
+      // Save the real document.fonts.ready in case we need to restore it.
+      // Override status + ready with the mock.
+      Object.defineProperty(document.fonts, 'status', {
+        configurable: true,
+        get: function () { return 'loading'; },
+      });
+      Object.defineProperty(document.fonts, 'ready', {
+        configurable: true,
+        get: function () { return pendingPromise; },
+      });
+
+      // Expose the resolve function so the post-construction script can
+      // trigger the "fonts loaded" event after Masonry has been built.
+      window.__resolveFontsReady = function () {
+        // Set the attribute that grows item 0 from 30px → 60px.
+        document.documentElement.setAttribute('data-fonts-loaded', '');
+        // Override status to report 'loaded' now.
+        Object.defineProperty(document.fonts, 'status', {
+          configurable: true,
+          get: function () { return 'loaded'; },
+        });
+        fontsReadyResolve();
+      };
+    })();
+  </script>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#fonts-ready');
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: 0,
+    });
+
+    // Now resolve the fake fonts.ready. Masonry's _create override has
+    // already scheduled a `document.fonts.ready.then(self.layout)` callback
+    // — that callback runs in the next microtask after we resolve the
+    // promise here. Set window.__READY in a queueMicrotask after the
+    // resolve so the visual runner waits long enough for the deferred
+    // layout to complete.
+    window.__resolveFontsReady();
+    Promise.resolve().then(function () {
+      Promise.resolve().then(function () {
+        window.__READY = true;
+      });
+    });
+  </script>
+
+</body>
+</html>

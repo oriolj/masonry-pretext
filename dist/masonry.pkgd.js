@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.9
+ * Masonry PACKAGED v5.0.0-dev.10
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -1234,6 +1234,18 @@ var Masonry = (() => {
         var Masonry = Outlayer.create("masonry");
         Masonry.compatOptions.fitWidth = "isFitWidth";
         var proto = Masonry.prototype;
+        var baseCreate = proto._create;
+        proto._create = function() {
+          baseCreate.call(this);
+          if (typeof document !== "undefined" && document.fonts && document.fonts.status !== "loaded") {
+            var self = this;
+            document.fonts.ready.then(function() {
+              if (self.element && self.element.outlayerGUID) {
+                self.layout();
+              }
+            });
+          }
+        };
         proto._resetLayout = function() {
           this.getSize();
           this._getMeasurement("columnWidth", "outerWidth");

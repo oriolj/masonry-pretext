@@ -43,6 +43,27 @@
 
   var proto = Masonry.prototype;
 
+  // document.fonts.ready first-paint gate (#010 / FORK_ROADMAP.md § P.4 —
+  // closes desandro/masonry#1182). When a custom font hasn't loaded at
+  // construction time, item heights are wrong and the layout overlaps until
+  // something triggers a relayout. Schedule a deferred layout when fonts
+  // finish loading. Idempotent: if fonts are already loaded the guard
+  // skips, and if the instance was destroyed before the promise resolves
+  // the alive-check skips.
+  var baseCreate = proto._create;
+  proto._create = function() {
+    baseCreate.call( this );
+    if ( typeof document !== 'undefined' && document.fonts &&
+         document.fonts.status !== 'loaded' ) {
+      var self = this;
+      document.fonts.ready.then( function() {
+        if ( self.element && self.element.outlayerGUID ) {
+          self.layout();
+        }
+      });
+    }
+  };
+
   proto._resetLayout = function() {
     this.getSize();
     this._getMeasurement( 'columnWidth', 'outerWidth' );
