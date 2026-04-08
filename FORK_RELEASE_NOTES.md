@@ -15,6 +15,34 @@ The full per-change records — hypothesis, before/after measurements, test stat
 
 Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for the full plan, [`PRETEXT_SSR_ROADMAP.md`](./PRETEXT_SSR_ROADMAP.md) for the SSR feature line, and [`improvements/`](./improvements/) for per-change details.
 
+### v5.0.0-dev.45 — 2026-04-09 — `static: 'until-resize'` hybrid mode (D.2) — **Tier 1 COMPLETE**
+
+> Tag: `v5.0.0-dev.45` · Improvement: [`045-static-until-resize.md`](./improvements/045-static-until-resize.md) · Closes downstream consumer ask **D.2** · **All four Tier 1 items now shipped**
+
+A new string variant `static: 'until-resize'` extends the existing `static` boolean preset. Behaves like `static: true` on construction (no animations, no `document.fonts.ready` hook, no per-item ResizeObserver) BUT on the first window-resize-driven relayout, restores the original `transitionDuration` AND wires up the per-item ResizeObserver retroactively. Effectively: **"trust the server until the client proves the server was wrong."**
+
+```ts
+new Masonry(grid, {
+  static: 'until-resize',
+  initLayout: false,
+  transitionDuration: '0.4s',
+});
+```
+
+Useful when the server can't reliably know the viewer's container width (no client hints, no User-Agent breakpoint mapping) and may pick the wrong breakpoint. The first user resize triggers a one-shot handoff:
+
+1. `_isHybridArmed` flag clears
+2. `transitionDuration` restores to the user's original value
+3. `options.static` is set to `false` so subsequent observer wiring uses the dynamic path
+4. The per-item `ResizeObserver` is constructed retroactively and observes all currently-known items
+5. The actual `layout()` call runs with the new container width
+
+From that point onward the instance behaves like a normal dynamic-content grid. The hybrid mode is a one-shot — once the client has proven the server was wrong, it's wrong forever.
+
+**Cost:** +114 B gzipped on `dist/masonry.pkgd.min.js`. New `_buildResizeObserver` helper extraction (so the construction code can be reused by both `_create` and the hybrid handoff). New `static-until-resize.html` discriminating fixture verifies all five hybrid state flags reset correctly across the resize boundary.
+
+**🎉 Tier 1 closeout.** With D.2 landed, all four Tier 1 items from the `enacast-astro` consumer audit (D.1 multi-breakpoint `computeLayouts` + D.2 hybrid mode + D.3 `itemSizer` + D.4 `dynamicItems`) are now shipped. The consumer can begin migrating wrong-breakpoint-prone pages, mixed-static-and-dynamic pages, and responsive multi-breakpoint pages onto the SSR pipeline.
+
 ### v5.0.0-dev.44 — 2026-04-09 — `dynamicItems` opt-out (D.4)
 
 > Tag: `v5.0.0-dev.44` · Improvement: [`044-dynamic-items-opt-out.md`](./improvements/044-dynamic-items-opt-out.md) · Closes downstream consumer ask **D.4** · **All 4 Tier 1 items now landed**

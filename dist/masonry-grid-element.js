@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.44
+ * Masonry PACKAGED v5.0.0-dev.45
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -918,7 +918,7 @@ var MasonryGridElement = (() => {
         Masonry.prototype = Object.create(Outlayer.prototype);
         Masonry.prototype.constructor = Masonry;
         Masonry.namespace = "masonry";
-        Masonry.version = true ? "5.0.0-dev.44" : "source";
+        Masonry.version = true ? "5.0.0-dev.45" : "source";
         Masonry.fork = "masonry-pretext";
         Masonry.defaults = Object.assign({}, Outlayer.defaults);
         Masonry.compatOptions = Object.assign({}, Outlayer.compatOptions, { fitWidth: "isFitWidth" });
@@ -1149,8 +1149,11 @@ var MasonryGridElement = (() => {
               "color: inherit"
             );
           }
+          var isHybrid = this.options.static === "until-resize";
           if (this.options.static) {
+            this._origTransitionDuration = this.options.transitionDuration;
             this.options.transitionDuration = 0;
+            if (isHybrid) this._isHybridArmed = true;
           }
           if (!this.options.pretextify && this.options.pretextOptions) {
             this._builtPretextify = buildPretextifyFromOptions(this.options);
@@ -1166,31 +1169,7 @@ var MasonryGridElement = (() => {
           }
           var hasDynamic = !!this.options.dynamicItems;
           if ((!this.options.static || hasDynamic) && typeof ResizeObserver !== "undefined") {
-            var self2 = this;
-            this._resizeLastSizes = /* @__PURE__ */ new WeakMap();
-            var pendingRaf = null;
-            this._resizeObserver = new ResizeObserver(function(entries) {
-              var changed = false;
-              for (var i2 = 0; i2 < entries.length; i2++) {
-                var entry = entries[i2];
-                var box = entry.borderBoxSize && entry.borderBoxSize[0];
-                var w = box ? box.inlineSize : entry.contentRect.width;
-                var h = box ? box.blockSize : entry.contentRect.height;
-                var prev = self2._resizeLastSizes.get(entry.target);
-                if (prev && (prev.width !== w || prev.height !== h)) {
-                  changed = true;
-                }
-                self2._resizeLastSizes.set(entry.target, { width: w, height: h });
-              }
-              if (changed && pendingRaf === null) {
-                pendingRaf = requestAnimationFrame(function() {
-                  pendingRaf = null;
-                  if (!self2._destroyed) {
-                    self2.layout();
-                  }
-                });
-              }
-            });
+            this._buildResizeObserver();
             for (var i = 0; i < this.items.length; i++) {
               this._observeItemElement(this.items[i].element);
             }
@@ -1210,6 +1189,31 @@ var MasonryGridElement = (() => {
             });
             this._mutationObserver.observe(this.element, { childList: true });
           }
+        };
+        proto._buildResizeObserver = function() {
+          var self = this;
+          this._resizeLastSizes = /* @__PURE__ */ new WeakMap();
+          var pendingRaf = null;
+          this._resizeObserver = new ResizeObserver(function(entries) {
+            var changed = false;
+            for (var i = 0; i < entries.length; i++) {
+              var entry = entries[i];
+              var box = entry.borderBoxSize && entry.borderBoxSize[0];
+              var w = box ? box.inlineSize : entry.contentRect.width;
+              var h = box ? box.blockSize : entry.contentRect.height;
+              var prev = self._resizeLastSizes.get(entry.target);
+              if (prev && (prev.width !== w || prev.height !== h)) {
+                changed = true;
+              }
+              self._resizeLastSizes.set(entry.target, { width: w, height: h });
+            }
+            if (changed && pendingRaf === null) {
+              pendingRaf = requestAnimationFrame(function() {
+                pendingRaf = null;
+                if (!self._destroyed) self.layout();
+              });
+            }
+          });
         };
         proto._observeItemElement = function(elem) {
           if (this.options.static && this.options.dynamicItems && elem.matches && !elem.matches(this.options.dynamicItems)) {
@@ -1417,6 +1421,21 @@ var MasonryGridElement = (() => {
           var previousWidth = this.containerWidth;
           this.getContainerWidth();
           return previousWidth != this.containerWidth;
+        };
+        proto.resize = function() {
+          if (!this.isResizeBound || !this.needsResizeLayout()) return;
+          if (this._isHybridArmed) {
+            this._isHybridArmed = false;
+            this.options.static = false;
+            this.options.transitionDuration = this._origTransitionDuration;
+            if (!this._resizeObserver && typeof ResizeObserver !== "undefined") {
+              this._buildResizeObserver();
+              for (var j = 0; j < this.items.length; j++) {
+                this._observeItemElement(this.items[j].element);
+              }
+            }
+          }
+          this.layout();
         };
         Masonry.computeLayout = function(opts) {
           var items = opts.items || [];

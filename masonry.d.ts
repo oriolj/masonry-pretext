@@ -152,14 +152,25 @@ export interface MasonryOptions {
    *   3. Skips per-item `ResizeObserver` construction (#012). Safe
    *      because items don't grow — no lazy images, no dynamic text.
    *
+   * **Hybrid mode `'until-resize'`** (#045 / D.2): a string variant
+   * that behaves like `true` on construction (no animations, no
+   * fonts.ready, no per-item observer) BUT on the first window-resize-
+   * driven relayout, restores the original `transitionDuration` AND
+   * wires up the per-item `ResizeObserver` retroactively. Effectively:
+   * "trust the server until the client proves the server was wrong".
+   * Useful when the server can't reliably know the viewer's container
+   * width and may pick the wrong breakpoint — the first user resize
+   * triggers a one-shot handoff to the dynamic-content path.
+   *
    * Default `false`. Set to `true` in Next.js / Astro / SvelteKit SSR
    * pages to eliminate the hydration flash and the runtime cost of the
    * dynamic-content machinery. See the README "Server-side rendering
    * (SSR) and hydration" section.
    *
    * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/015-static-ssr-preset.md
+   * @see https://github.com/oriolj/masonry-pretext/blob/master/improvements/045-static-until-resize.md
    */
-  static?: boolean;
+  static?: boolean | 'until-resize';
 
   /**
    * **Selectively re-enable per-item ResizeObserver inside `static`

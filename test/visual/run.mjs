@@ -252,6 +252,56 @@ const cases = [
     ],
   },
   {
+    // static: 'until-resize' hybrid mode (#045 / D.2) — see
+    // test/visual/pages/static-until-resize.html. Constructs with
+    // `static: 'until-resize'` and a non-zero transitionDuration.
+    // Initial layout is 3-col (180px container). After construction
+    // the container is narrowed to 120px and msnry.resize() is called
+    // manually (bypassing the 100ms debounce). The hybrid handoff
+    // fires: _isHybridArmed flips to false, transitionDuration
+    // restored, ResizeObserver constructed retroactively. Layout
+    // repacks for 2 cols.
+    name: 'static-until-resize',
+    page: 'static-until-resize.html',
+    container: '#static-until-resize',
+    expected: [
+      { left: '0px',  top: '0px'  },
+      { left: '60px', top: '0px'  },
+      { left: '0px',  top: '30px' },
+      { left: '60px', top: '30px' }, // discriminating: 2-col layout, post-resize
+    ],
+    pageAssert: () => {
+      const initial = window.__INITIAL_STATE;
+      const post = window.__POST_RESIZE_STATE;
+      if (!initial) return '__INITIAL_STATE not captured';
+      if (!post) return '__POST_RESIZE_STATE not captured';
+      // Initial: hybrid armed, transitionDuration overridden to 0
+      if (initial.isHybridArmed !== true) {
+        return `initial _isHybridArmed expected true, got ${initial.isHybridArmed}`;
+      }
+      if (initial.transitionDuration !== 0) {
+        return `initial transitionDuration expected 0, got ${initial.transitionDuration}`;
+      }
+      if (initial.hasObserver !== false) {
+        return `initial _resizeObserver expected null, got truthy`;
+      }
+      // Post-resize: handoff fired
+      if (post.isHybridArmed !== false) {
+        return `post _isHybridArmed expected false, got ${post.isHybridArmed}`;
+      }
+      if (post.transitionDuration !== '0.4s') {
+        return `post transitionDuration expected '0.4s', got ${post.transitionDuration}`;
+      }
+      if (post.hasObserver !== true) {
+        return `post _resizeObserver expected truthy, got falsy`;
+      }
+      if (post.staticOption !== false) {
+        return `post static option expected false, got ${post.staticOption}`;
+      }
+      return null;
+    },
+  },
+  {
     // dynamicItems opt-out (#044 / D.4) — see test/visual/pages/dynamic-items.html
     // for the discriminator design. 4 items in a 3-col 180px container,
     // all 60×30 initially. Item 0 has the .dynamic-item class. With

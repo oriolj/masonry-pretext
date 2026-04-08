@@ -453,8 +453,23 @@
     }
     // Static mode: no animations on any relayout. Set before anything
     // else so item.transition() reads the overridden value.
+    //
+    // #045 / D.2 — `static: 'until-resize'` hybrid mode. Behaves like
+    // `static: true` on construction (no animations, no fonts.ready,
+    // no per-item ResizeObserver), but on the FIRST window-resize-driven
+    // relayout, it restores the original transitionDuration AND wires up
+    // the per-item ResizeObserver. The first window resize is a strong
+    // signal that the server's container-width guess was wrong, and from
+    // that point forward the grid should behave like a normal dynamic
+    // grid. The handoff is a one-shot — after it fires, `_isHybridArmed`
+    // is cleared and subsequent layouts run on the dynamic path.
+    var isHybrid = this.options.static === 'until-resize';
     if ( this.options.static ) {
+      // Stash the original transition duration so the hybrid handoff
+      // can restore it. For boolean `static: true`, the stash is unused.
+      this._origTransitionDuration = this.options.transitionDuration;
       this.options.transitionDuration = 0;
+      if ( isHybrid ) this._isHybridArmed = true;
     }
     // #035 — build the pretextify closure from `pretextOptions`, stored
     // on the instance (not on this.options) so we don't clobber whatever
@@ -499,31 +514,7 @@
     // (`appended` / `prepended`) item additions.
     var hasDynamic = !!this.options.dynamicItems;
     if ( ( !this.options.static || hasDynamic ) && typeof ResizeObserver !== 'undefined' ) {
-      var self2 = this;
-      this._resizeLastSizes = new WeakMap();
-      var pendingRaf = null;
-      this._resizeObserver = new ResizeObserver( function( entries ) {
-        var changed = false;
-        for ( var i = 0; i < entries.length; i++ ) {
-          var entry = entries[i];
-          var box = entry.borderBoxSize && entry.borderBoxSize[0];
-          var w = box ? box.inlineSize : entry.contentRect.width;
-          var h = box ? box.blockSize : entry.contentRect.height;
-          var prev = self2._resizeLastSizes.get( entry.target );
-          if ( prev && ( prev.width !== w || prev.height !== h ) ) {
-            changed = true;
-          }
-          self2._resizeLastSizes.set( entry.target, { width: w, height: h });
-        }
-        if ( changed && pendingRaf === null ) {
-          pendingRaf = requestAnimationFrame( function() {
-            pendingRaf = null;
-            if ( !self2._destroyed ) {
-              self2.layout();
-            }
-          });
-        }
-      });
+      this._buildResizeObserver();
       // Observe items added during the initial _create (via reloadItems).
       // Items added later (via _itemize through appended/prepended/addItems)
       // are observed by the proto._itemize override below.
@@ -560,6 +551,37 @@
       });
       this._mutationObserver.observe( this.element, { childList: true });
     }
+  };
+
+  // Construct the per-item ResizeObserver with rAF-coalesced callback.
+  // Extracted from _create so the #045 / D.2 hybrid handoff can re-use
+  // the same construction code without inline duplication. Sets
+  // `this._resizeLastSizes` and `this._resizeObserver`. Does NOT
+  // observe any items — callers do that via `_observeItemElement`.
+  proto._buildResizeObserver = function() {
+    var self = this;
+    this._resizeLastSizes = new WeakMap();
+    var pendingRaf = null;
+    this._resizeObserver = new ResizeObserver( function( entries ) {
+      var changed = false;
+      for ( var i = 0; i < entries.length; i++ ) {
+        var entry = entries[i];
+        var box = entry.borderBoxSize && entry.borderBoxSize[0];
+        var w = box ? box.inlineSize : entry.contentRect.width;
+        var h = box ? box.blockSize : entry.contentRect.height;
+        var prev = self._resizeLastSizes.get( entry.target );
+        if ( prev && ( prev.width !== w || prev.height !== h ) ) {
+          changed = true;
+        }
+        self._resizeLastSizes.set( entry.target, { width: w, height: h });
+      }
+      if ( changed && pendingRaf === null ) {
+        pendingRaf = requestAnimationFrame( function() {
+          pendingRaf = null;
+          if ( !self._destroyed ) self.layout();
+        });
+      }
+    });
   };
 
   // Helper used by both _create's initial loop and the _itemize override.
@@ -904,6 +926,46 @@
     var previousWidth = this.containerWidth;
     this.getContainerWidth();
     return previousWidth != this.containerWidth;
+  };
+
+  // ── #045 / D.2 — `static: 'until-resize'` hybrid handoff ────────────
+  // Replaces Outlayer.resize so the first window-resize-driven layout
+  // in hybrid mode flips the instance from "static" behavior back to
+  // dynamic: restore the original transition duration AND wire up the
+  // per-item ResizeObserver for items added before this point. The
+  // hybrid arm flag is cleared after the first handoff so subsequent
+  // resizes go through the standard dynamic path. Setting
+  // `this.options.static = false` after handoff ensures
+  // `_observeItemElement` doesn't accidentally apply the dynamicItems
+  // selector filter (which only triggers on `static + dynamicItems`).
+  //
+  // We can't call the base `Outlayer.resize` after the hybrid bookkeeping
+  // because masonry's `needsResizeLayout` mutates `this.containerWidth`
+  // as a side effect of the previous-vs-current comparison, so calling
+  // it twice in the same `resize()` returns false the second time and
+  // the actual layout() call is skipped. Instead the wrapper inlines
+  // the (small) base proto.resize logic.
+  proto.resize = function() {
+    if ( !this.isResizeBound || !this.needsResizeLayout() ) return;
+    if ( this._isHybridArmed ) {
+      this._isHybridArmed = false;
+      this.options.static = false;
+      // Restore the original transition duration. If the user passed
+      // a custom value, that's what they wanted; if they passed nothing,
+      // it falls back to Outlayer's default (0.4s).
+      this.options.transitionDuration = this._origTransitionDuration;
+      // Wire up the per-item ResizeObserver if not already constructed.
+      // The construction code in _create only runs when
+      // `!static || dynamicItems`, so for hybrid mode we explicitly
+      // construct it here on the first resize.
+      if ( !this._resizeObserver && typeof ResizeObserver !== 'undefined' ) {
+        this._buildResizeObserver();
+        for ( var j = 0; j < this.items.length; j++ ) {
+          this._observeItemElement( this.items[j].element );
+        }
+      }
+    }
+    this.layout();
   };
 
   // ─────────────────────────────────────────────────────────────────────

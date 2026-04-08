@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>masonry-pretext visual: static: 'until-resize' (#045 / D.2)</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!--
+    Discriminating fixture for the static: 'until-resize' hybrid mode
+    (#045 / D.2). 4 items in a container that starts at 180px (3 cols).
+    Constructed with `static: 'until-resize'` and a non-zero
+    `transitionDuration`. After construction:
+
+       - Initial layout (3 cols): (0,0), (60,0), (120,0), (0,30)
+       - Hybrid armed: __MSNRY._isHybridArmed === true
+       - transitionDuration overridden to 0
+
+    Then we narrow the container to 120px (2 cols) and manually call
+    msnry.resize() to bypass Outlayer's 100ms debounce. The hybrid
+    handoff fires:
+
+       - _isHybridArmed flips to false
+       - transitionDuration restored to '0.4s' (the user's value)
+       - The per-item ResizeObserver is constructed retroactively
+       - Layout repacks for 2 cols: (0,0), (60,0), (0,30), (60,30)
+
+    Discriminating signal: items end up at the 2-col positions only
+    if the hybrid handoff fires. If `static: 'until-resize'` is treated
+    as `static: true` (no handoff), the resize would still relayout
+    (Outlayer's resize hook is unconditionally bound), but the
+    pageAssert below also verifies the hybrid state flags reset
+    correctly — that's the part only the new code path produces.
+  -->
+  <style>
+    #static-until-resize {
+      width: 180px; /* starts at 3 cols */
+    }
+  </style>
+  <div id="static-until-resize" class="container">
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+    <div class="item"></div>
+  </div>
+
+  <script src="../../../dist/masonry.pkgd.min.js"></script>
+  <script>
+    var grid = document.querySelector('#static-until-resize');
+
+    window.__MSNRY = new Masonry(grid, {
+      columnWidth: 60,
+      transitionDuration: '0.4s',
+      static: 'until-resize',
+    });
+
+    // Capture state immediately after construction (before resize).
+    window.__INITIAL_STATE = {
+      isHybridArmed: window.__MSNRY._isHybridArmed,
+      transitionDuration: window.__MSNRY.options.transitionDuration,
+      hasObserver: !!window.__MSNRY._resizeObserver,
+    };
+
+    // Narrow the container to 120px and manually call resize() to
+    // bypass Outlayer's 100ms debounce. The hybrid handoff should
+    // fire on this resize call.
+    grid.style.width = '120px';
+    window.__MSNRY.resize();
+
+    // Capture state after the resize. The handoff should have fired.
+    window.__POST_RESIZE_STATE = {
+      isHybridArmed: window.__MSNRY._isHybridArmed,
+      transitionDuration: window.__MSNRY.options.transitionDuration,
+      hasObserver: !!window.__MSNRY._resizeObserver,
+      staticOption: window.__MSNRY.options.static,
+    };
+
+    // Wait for the post-resize transitions to complete before signaling
+    // ready. The original transitionDuration is 0.4s, so the items
+    // animate from their old positions to the new ones via translate3d
+    // and only commit to style.left/top onTransitionEnd. We need that
+    // commit to happen before the runner reads the positions.
+    setTimeout(function () {
+      window.__READY = true;
+    }, 600);
+  </script>
+
+</body>
+</html>
