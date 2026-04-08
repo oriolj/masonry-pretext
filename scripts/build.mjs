@@ -272,6 +272,111 @@ var dashedVendorProperties = {
         find: `})( window, function factory() {`,
         replace: `})( typeof window !== 'undefined' ? window : {}, function factory() {`,
       },
+      // ── #007 — delete the IE11/Firefox<29 box-sizing detection ────────────
+      // get-size has a one-time setup() that creates a probe div, mounts it,
+      // measures it, and removes it on the first call to getSize() — solely
+      // to detect a quirk where IE11 and Firefox<29 returned the *inner*
+      // width on `style.width` for border-box elements while modern browsers
+      // return the outer width. At our browser baseline (chrome84 /
+      // firefox86 / safari15 / edge84) the modern behavior is universal, so
+      // `isBoxSizeOuter` is always true. Delete the setup machinery + the
+      // call site, then collapse `isBorderBoxSizeOuter = isBorderBox &&
+      // isBoxSizeOuter` into just `isBorderBox`.
+      //
+      // Side benefit: eliminates one forced-reflow round-trip on the first
+      // getSize() call (`appendChild` → `getComputedStyle` → `removeChild`).
+      {
+        description: '[#007] delete get-size setup() function + isSetup/isBoxSizeOuter state',
+        find: `// -------------------------- setup -------------------------- //
+
+var isSetup = false;
+
+var isBoxSizeOuter;
+
+/**
+ * setup
+ * check isBoxSizerOuter
+ * do on first getSize() rather than on page load for Firefox bug
+ */
+function setup() {
+  // setup once
+  if ( isSetup ) {
+    return;
+  }
+  isSetup = true;
+
+  // -------------------------- box sizing -------------------------- //
+
+  /**
+   * Chrome & Safari measure the outer-width on style.width on border-box elems
+   * IE11 & Firefox<29 measures the inner-width
+   */
+  var div = document.createElement('div');
+  div.style.width = '200px';
+  div.style.padding = '1px 2px 3px 4px';
+  div.style.borderStyle = 'solid';
+  div.style.borderWidth = '1px 2px 3px 4px';
+  div.style.boxSizing = 'border-box';
+
+  var body = document.body || document.documentElement;
+  body.appendChild( div );
+  var style = getStyle( div );
+  // round value for browser zoom. desandro/masonry#928
+  isBoxSizeOuter = Math.round( getStyleSize( style.width ) ) == 200;
+  getSize.isBoxSizeOuter = isBoxSizeOuter;
+
+  body.removeChild( div );
+}
+
+`,
+        replace: `// box-sizing setup() deleted by masonry-pretext #007 (\u00a7 L.3)
+// IE11 / Firefox<29 quirk; modern browsers always return outer width on
+// style.width for border-box elements.
+
+`,
+      },
+      {
+        description: '[#007] delete `setup();` call from inside getSize()',
+        find: `function getSize( elem ) {
+  setup();
+
+  // use querySeletor if elem is string`,
+        replace: `function getSize( elem ) {
+  // use querySeletor if elem is string`,
+      },
+      {
+        description: '[#007] inline isBorderBoxSizeOuter (always equals isBorderBox at our browser baseline)',
+        find: `  var isBorderBoxSizeOuter = isBorderBox && isBoxSizeOuter;
+
+  // overwrite width and height if we can get it from style
+  var styleWidth = getStyleSize( style.width );
+  if ( styleWidth !== false ) {
+    size.width = styleWidth +
+      // add padding and border unless it's already including it
+      ( isBorderBoxSizeOuter ? 0 : paddingWidth + borderWidth );
+  }
+
+  var styleHeight = getStyleSize( style.height );
+  if ( styleHeight !== false ) {
+    size.height = styleHeight +
+      // add padding and border unless it's already including it
+      ( isBorderBoxSizeOuter ? 0 : paddingHeight + borderHeight );
+  }`,
+        replace: `  // overwrite width and height if we can get it from style
+  var styleWidth = getStyleSize( style.width );
+  if ( styleWidth !== false ) {
+    size.width = styleWidth +
+      // add padding and border unless it's already including it
+      ( isBorderBox ? 0 : paddingWidth + borderWidth );
+  }
+
+  var styleHeight = getStyleSize( style.height );
+  if ( styleHeight !== false ) {
+    size.height = styleHeight +
+      // add padding and border unless it's already including it
+      ( isBorderBox ? 0 : paddingHeight + borderHeight );
+  }`,
+      },
     ],
   },
   {

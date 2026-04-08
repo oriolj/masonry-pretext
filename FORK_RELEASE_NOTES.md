@@ -17,6 +17,54 @@ Work in progress toward v5.0.0. See [`FORK_ROADMAP.md`](./FORK_ROADMAP.md) for t
 
 ---
 
+## v5.0.0-dev.7 — 2026-04-08 — Delete get-size box-sizing setup (§ L.3)
+
+> Tag: `v5.0.0-dev.7` · Improvement: [`007-delete-getsize-boxsizing-setup.md`](./improvements/007-delete-getsize-boxsizing-setup.md)
+
+Continuing the dead-code deletion sweep. The bundled `get-size` dependency had a one-time `setup()` function that mounted a probe div to the document, measured it via `getComputedStyle`, and removed it — solely to detect an IE11 / Firefox <29 quirk where `style.width` returned the inner width on border-box elements. At our browser baseline (chrome 84 / firefox 86 / safari 15 / edge 84), the modern behavior is universal — `setup()` always set `isBoxSizeOuter` to `true`, making `isBorderBoxSizeOuter = isBorderBox && true` equivalent to just `isBorderBox`. Pure dead code.
+
+### Removed
+
+- **The `setup()` function** in `node_modules/get-size/get-size.js` (~40 LOC) — the probe-div detection.
+- **The `setup();` call** at the top of `getSize()`.
+- **The `var isBorderBoxSizeOuter = isBorderBox && isBoxSizeOuter;` declaration** — replaced with direct use of `isBorderBox` in the width/height computation.
+
+### Side benefit
+
+**One forced reflow eliminated** on the first `getSize()` call. `setup()` did `document.createElement('div')` → `appendChild` → `getComputedStyle` → `removeChild`. That round-trip is gone.
+
+### Numbers
+
+| File | Metric | pre-007 | v5.0.0-dev.7 | Δ |
+|---|---|---:|---:|---:|
+| `dist/masonry.pkgd.js` | raw | 50,043 | **49,191** | **−1.70 %** |
+| `dist/masonry.pkgd.js` | gzip | 9,460 | **9,271** | **−2.00 %** |
+| `dist/masonry.pkgd.js` | brotli | 8,412 | **8,244** | **−2.00 %** |
+| `dist/masonry.pkgd.min.js` | raw | 21,974 | **21,596** | **−1.72 %** |
+| `dist/masonry.pkgd.min.js` | gzip | 7,072 | **6,924** | **−2.09 %** |
+| `dist/masonry.pkgd.min.js` | brotli | 6,401 | **6,245** | **−2.44 %** |
+| Visual + SSR + no-jquery gates | passing | all | all | unchanged |
+
+### vs upstream-frozen v4.2.2
+
+| Metric | v4.2.2 | v5.0.0-dev.7 | Δ |
+|---|---:|---:|---:|
+| `dist/masonry.pkgd.min.js` raw | 24,103 | **21,596** | **−2,507 B (−10.40 %)** |
+| `dist/masonry.pkgd.min.js` gzip | 7,367 | **6,924** | **−443 B (−6.01 %)** |
+| `dist/masonry.pkgd.min.js` brotli | 6,601 | **6,245** | **−356 B (−5.39 %)** |
+
+The fork is now over **10 % smaller than upstream in raw bytes, 6 % smaller in gzip, 5.4 % smaller in brotli.**
+
+### Predicted vs actual
+
+All five numeric predictions inside their bands. The brotli savings (−156 B) over-shot the predicted top of band (−150 B) by 6 bytes — calibration: brotli's dictionary-based compression handles short repeated patterns slightly better than gzip on small bundles.
+
+### Migration notes
+
+- **None.** Behavior is unchanged in any browser at the fork's target baseline. CDN consumers should regenerate SRI hashes (bundle bytes have changed).
+
+---
+
 ## v5.0.0-dev.6 — 2026-04-08 — Remove jQuery entirely (§ 2.5) — **BREAKING CHANGE**
 
 > Tag: `v5.0.0-dev.6` · Improvement: [`006-remove-jquery.md`](./improvements/006-remove-jquery.md)

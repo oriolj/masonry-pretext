@@ -1,5 +1,5 @@
 /*!
- * Masonry PACKAGED v5.0.0-dev.6
+ * Masonry PACKAGED v5.0.0-dev.7
  * Cascading grid layout library
  * https://github.com/oriolj/masonry-pretext
  * MIT License
@@ -153,28 +153,7 @@ var Masonry = (() => {
           }
           return style;
         }
-        var isSetup = false;
-        var isBoxSizeOuter;
-        function setup() {
-          if (isSetup) {
-            return;
-          }
-          isSetup = true;
-          var div = document.createElement("div");
-          div.style.width = "200px";
-          div.style.padding = "1px 2px 3px 4px";
-          div.style.borderStyle = "solid";
-          div.style.borderWidth = "1px 2px 3px 4px";
-          div.style.boxSizing = "border-box";
-          var body = document.body || document.documentElement;
-          body.appendChild(div);
-          var style = getStyle(div);
-          isBoxSizeOuter = Math.round(getStyleSize(style.width)) == 200;
-          getSize.isBoxSizeOuter = isBoxSizeOuter;
-          body.removeChild(div);
-        }
         function getSize(elem) {
-          setup();
           if (typeof elem == "string") {
             elem = document.querySelector(elem);
           }
@@ -201,16 +180,15 @@ var Masonry = (() => {
           var marginHeight = size.marginTop + size.marginBottom;
           var borderWidth = size.borderLeftWidth + size.borderRightWidth;
           var borderHeight = size.borderTopWidth + size.borderBottomWidth;
-          var isBorderBoxSizeOuter = isBorderBox && isBoxSizeOuter;
           var styleWidth = getStyleSize(style.width);
           if (styleWidth !== false) {
             size.width = styleWidth + // add padding and border unless it's already including it
-            (isBorderBoxSizeOuter ? 0 : paddingWidth + borderWidth);
+            (isBorderBox ? 0 : paddingWidth + borderWidth);
           }
           var styleHeight = getStyleSize(style.height);
           if (styleHeight !== false) {
             size.height = styleHeight + // add padding and border unless it's already including it
-            (isBorderBoxSizeOuter ? 0 : paddingHeight + borderHeight);
+            (isBorderBox ? 0 : paddingHeight + borderHeight);
           }
           size.innerWidth = size.width - (paddingWidth + borderWidth);
           size.innerHeight = size.height - (paddingHeight + borderHeight);
